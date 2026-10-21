@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
-import { CalendarDays, ListChecks, Plus } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CalendarDays, ListChecks, Plus, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
-import type { DateKey, Habit, Theme } from './types'
-import { fromDateKey, todayKey } from './lib/dates'
-import { HABIT_COLORS } from './lib/palette'
-import { useHabits } from './state/HabitsContext'
+import type { Burst, DateKey, Habit, Theme } from './types'
+import { formatWeekday } from './lib/dates'
+import { colorAt } from './lib/palette'
+import { completionSet } from './lib/stats'
+import { useHabits } from './state/habitsContext'
+import { useClock } from './hooks/useClock'
+import { useStableCallback } from './hooks/useStableCallback'
 import { Header } from './components/Header'
 import { TodayView } from './components/TodayView'
 import { WeeklyGrid } from './components/WeeklyGrid'
@@ -14,24 +17,12 @@ import { Celebration, CelebrationToast } from './components/Celebration'
 import { TopProgress } from './components/TopProgress'
 
 type Tab = 'today' | 'week'
-type Dialog = { kind: 'add' } | { kind: 'edit'; habit: Habit } | { kind: 'delete'; habit: Habit } | null
+type Dialog = { kind: 'add' } | { kind: 'edit'; habit: Habit } | { kind: 'delete'; habit: Habit }
 
 const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' }
-
-/** Today's date key, refreshed when the day rolls over or the tab regains focus. */
-function useToday(): DateKey {
-  const [today, setToday] = useState(todayKey)
-  useEffect(() => {
-    const refresh = () => setToday(todayKey())
-    const id = window.setInterval(refresh, 60_000)
-    document.addEventListener('visibilitychange', refresh)
-    return () => {
-      window.clearInterval(id)
-      document.removeEventListener('visibilitychange', refresh)
-    }
-  }, [])
-  return today
-}
+const BURST_MS = 900
+const CELEBRATION_MS = 2600
+const TOP_PROGRESS_MS = 500
 
 function useThemeClass(theme: Theme) {
   useEffect(() => {
@@ -47,68 +38,69 @@ function useThemeClass(theme: Theme) {
   }, [theme])
 }
 
+/** A piece of state that resets to `null` `ms` after being set (for one-shot effects). */
+function useTransient<T>(ms: number): [T | null, (value: T) => void] {
+  const [value, setValue] = useState<T | null>(null)
+  useEffect(() => {
+    if (value === null) return
+    const id = window.setTimeout(() => setValue(null), ms)
+    return () => window.clearTimeout(id)
+  }, [value, ms])
+  return [value, setValue]
+}
+
 export default function App() {
   const { data, addHabit, updateHabit, deleteHabit, toggleCompletion, reorderHabits, setTheme, setCollapseDone } = useHabits()
   const [tab, setTab] = useState<Tab>('today')
-  const [dialog, setDialog] = useState<Dialog>(null)
-  const [celebrating, setCelebrating] = useState(false)
-  const [burst, setBurst] = useState<{ habitId: string; key: number } | null>(null)
+  const [dialog, setDialog] = useState<Dialog | null>(null)
   const [announcement, setAnnouncement] = useState('')
-  const [navigating, setNavigating] = useState(0) // > 0 while the top progress bar shows
-  const today = useToday()
+  const [burst, setBurst] = useTransient<Burst>(BURST_MS)
+  const [celebrating, setCelebrating] = useTransient<true>(CELEBRATION_MS)
+  const [navigation, setNavigation] = useTransient<number>(TOP_PROGRESS_MS) // a new number replays the bar
+  const { today, hour } = useClock()
   useThemeClass(data.settings.theme)
 
-  const habits = data.habits.filter((h) => !h.archived).sort((a, b) => a.order - b.order)
-  const doneToday = habits.filter((h) => data.completions[h.id]?.includes(today)).length
+  const habits = useMemo(
+    () => data.habits.filter((h) => !h.archived).sort((a, b) => a.order - b.order),
+    [data.habits],
+  )
+  const doneToday = useMemo(
+    () => habits.filter((h) => completionSet(data.completions[h.id] ?? []).has(today)).length,
+    [habits, data.completions, today],
+  )
 
-  const toggle = (habit: Habit, date: DateKey) => {
-    const wasDone = data.completions[habit.id]?.includes(date) ?? false
+  const toggle = useStableCallback((habit: Habit, date: DateKey) => {
+    const wasDone = completionSet(data.completions[habit.id] ?? []).has(date)
     toggleCompletion(habit.id, date)
     // Screen readers hear the result of every check-in (the visuals alone aren't enough).
     const nowDone = date === today ? doneToday + (wasDone ? -1 : 1) : doneToday
-    const when = date === today ? 'today' : 'on ' + fromDateKey(date).toLocaleDateString(undefined, { weekday: 'long' })
+    const when = date === today ? 'today' : `on ${formatWeekday(date)}`
     setAnnouncement(`${habit.name} ${wasDone ? 'unmarked' : 'done'} ${when}. ${nowDone} of ${habits.length} done today.`)
     if (date !== today || wasDone) return
     // A tiny burst for the first check-off of the day; the big one when the last habit is done.
     if (doneToday === 0) setBurst({ habitId: habit.id, key: Date.now() })
     if (doneToday + 1 === habits.length) setCelebrating(true)
-  }
+  })
 
-  useEffect(() => {
-    if (!burst) return
-    const id = window.setTimeout(() => setBurst(null), 900)
-    return () => window.clearTimeout(id)
-  }, [burst])
-
-  useEffect(() => {
-    if (!celebrating) return
-    const id = window.setTimeout(() => setCelebrating(false), 2600)
-    return () => window.clearTimeout(id)
-  }, [celebrating])
-
-  const reorder = (activeId: string, overId: string) => {
+  const reorder = useStableCallback((activeId: string, overId: string) => {
     const ids = habits.map((h) => h.id)
     const from = ids.indexOf(activeId)
     const to = ids.indexOf(overId)
     if (from < 0 || to < 0) return
     ids.splice(to, 0, ...ids.splice(from, 1))
     reorderHabits(ids)
-  }
+  })
 
   const switchTab = (next: Tab) => {
     if (next === tab) return
     setTab(next)
-    setNavigating((n) => n + 1)
+    setNavigation(Date.now())
   }
 
-  useEffect(() => {
-    if (!navigating) return
-    const id = window.setTimeout(() => setNavigating(0), 500)
-    return () => window.clearTimeout(id)
-  }, [navigating])
-
   const closeDialog = useCallback(() => setDialog(null), [])
-  const openAdd = () => setDialog({ kind: 'add' })
+  const openAdd = useCallback(() => setDialog({ kind: 'add' }), [])
+  const openEdit = useCallback((habit: Habit) => setDialog({ kind: 'edit', habit }), [])
+  const openDelete = useCallback((habit: Habit) => setDialog({ kind: 'delete', habit }), [])
 
   return (
     <div className="mx-auto min-h-dvh max-w-xl px-4 pb-32">
@@ -118,9 +110,10 @@ export default function App() {
       >
         Skip to habits
       </a>
-      {navigating > 0 && <TopProgress key={navigating} />}
+      {navigation !== null && <TopProgress key={navigation} />}
       <Header
         today={today}
+        hour={hour}
         doneToday={doneToday}
         totalToday={habits.length}
         theme={data.settings.theme}
@@ -139,8 +132,8 @@ export default function App() {
             onReorder={reorder}
             onToggle={toggle}
             onAdd={openAdd}
-            onEdit={(habit) => setDialog({ kind: 'edit', habit })}
-            onDelete={(habit) => setDialog({ kind: 'delete', habit })}
+            onEdit={openEdit}
+            onDelete={openDelete}
           />
         ) : (
           <WeeklyGrid habits={habits} completions={data.completions} today={today} onToggle={toggle} />
@@ -167,7 +160,7 @@ export default function App() {
 
       {dialog?.kind === 'add' && (
         <AddHabitModal
-          defaultColor={HABIT_COLORS[habits.length % HABIT_COLORS.length]}
+          defaultColor={colorAt(habits.length)}
           onClose={closeDialog}
           onSave={(draft) => {
             addHabit(draft)
@@ -216,7 +209,7 @@ export default function App() {
 interface TabButtonProps {
   active: boolean
   onClick: () => void
-  icon: typeof ListChecks
+  icon: LucideIcon
   label: string
 }
 

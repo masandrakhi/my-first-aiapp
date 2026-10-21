@@ -8,7 +8,7 @@ describe('habitsReducer', () => {
 
   it('adds a habit with a trimmed name', () => {
     expect(withHabit.habits).toHaveLength(1)
-    expect(withHabit.habits[0].name).toBe('Read')
+    expect(withHabit.habits[0]!.name).toBe('Read')
   })
 
   it('toggles a completion on and off', () => {
@@ -20,7 +20,7 @@ describe('habitsReducer', () => {
 
   it('updates and deletes (including history)', () => {
     const edited = habitsReducer(withHabit, { type: 'UPDATE_HABIT', id: habit.id, changes: { emoji: '📖' } })
-    expect(edited.habits[0].emoji).toBe('📖')
+    expect(edited.habits[0]!.emoji).toBe('📖')
     const done = habitsReducer(edited, { type: 'TOGGLE_COMPLETION', id: habit.id, date: '2026-10-21' })
     const deleted = habitsReducer(done, { type: 'DELETE_HABIT', id: habit.id })
     expect(deleted.habits).toEqual([])
@@ -34,7 +34,7 @@ describe('REORDER', () => {
     for (const [i, name] of ['A', 'B', 'C'].entries()) {
       state = habitsReducer(state, { type: 'ADD_HABIT', habit: createHabit({ name, emoji: '✨', color: '#000' }, i) })
     }
-    const [a, b, c] = state.habits.map((h) => h.id)
+    const [a, b, c] = state.habits.map((h) => h.id) as [string, string, string]
     const next = habitsReducer(state, { type: 'REORDER', ids: [c, a, b] })
     expect(next.habits.map((h) => [h.name, h.order])).toEqual([['C', 0], ['A', 1], ['B', 2]])
   })
@@ -60,7 +60,7 @@ describe('storage', () => {
     expect(loadData()).toEqual(defaultData())
     const backups = Object.keys(localStorage).filter((k) => k.startsWith(BACKUP_PREFIX))
     expect(backups).toHaveLength(1)
-    expect(localStorage.getItem(backups[0])).toBe('{not json')
+    expect(localStorage.getItem(backups[0]!)).toBe('{not json')
   })
 
   it('upgrades old low-contrast habit colors', () => {
@@ -69,7 +69,7 @@ describe('storage', () => {
       habit: createHabit({ name: 'Walk', emoji: '🚶', color: '#f59e0b' }, 0),
     })
     saveData(old)
-    expect(loadData().habits[0].color).toBe('#d97706')
+    expect(loadData().habits[0]!.color).toBe('#d97706')
   })
 
   it('falls back to defaults on corrupt or unknown data', () => {

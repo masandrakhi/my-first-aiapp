@@ -1,12 +1,15 @@
 import { useId, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Check } from 'lucide-react'
 import type { Habit } from '../types'
+import { cssVars } from '../lib/css'
 import type { HabitDraft } from '../state/habitsReducer'
-import { DEFAULT_EMOJI, HABIT_COLOR_OPTIONS, HABIT_COLORS, readableTextOn } from '../lib/palette'
+import { colorAt, DEFAULT_COLOR, DEFAULT_EMOJI, HABIT_COLOR_OPTIONS, HABIT_COLORS, readableTextOn } from '../lib/palette'
 import { Modal } from './ui/Modal'
 import { EmojiPicker } from './EmojiPicker'
 
 export const MAX_NAME_LENGTH = 40
+
+const ARROW_STEP: Partial<Record<string, number>> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
 
 interface AddHabitModalProps {
   /** When given, the modal edits this habit instead of creating a new one. */
@@ -16,20 +19,20 @@ interface AddHabitModalProps {
   onClose: () => void
 }
 
-export function AddHabitModal({ habit, defaultColor = HABIT_COLORS[0], onSave, onClose }: AddHabitModalProps) {
+export function AddHabitModal({ habit, defaultColor = DEFAULT_COLOR, onSave, onClose }: AddHabitModalProps) {
   const [name, setName] = useState(habit?.name ?? '')
   const [emoji, setEmoji] = useState(habit?.emoji ?? DEFAULT_EMOJI)
-  const [color, setColor] = useState<string>(habit?.color ?? defaultColor)
+  const [color, setColor] = useState(habit?.color ?? defaultColor)
 
   const nameId = useId()
 
   // Radio-group keyboard pattern: arrows move the selection within the swatches.
   const onColorKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+    const step = ARROW_STEP[e.key]
     if (step === undefined) return
     e.preventDefault()
     const i = (HABIT_COLORS.indexOf(color) + step + HABIT_COLORS.length) % HABIT_COLORS.length
-    setColor(HABIT_COLORS[i])
+    setColor(colorAt(i))
     e.currentTarget.querySelectorAll<HTMLButtonElement>('button')[i]?.focus()
   }
 
@@ -68,7 +71,7 @@ export function AddHabitModal({ habit, defaultColor = HABIT_COLORS[0], onSave, o
               placeholder="e.g. Drink water"
               aria-describedby={`${nameId}-count`}
               className="h-14 min-w-0 flex-1 rounded-2xl bg-stone-100 px-4 text-base outline-none placeholder:text-stone-600 focus-visible:outline-none focus:ring-2 dark:bg-stone-800 dark:placeholder:text-stone-400"
-              style={{ ['--tw-ring-color' as string]: color }}
+              style={cssVars({ '--tw-ring-color': color })}
             />
           </div>
           <p id={`${nameId}-count`} className="mt-1 text-right text-xs text-stone-600 tabular-nums dark:text-stone-400">

@@ -1,14 +1,34 @@
 import { describe, expect, it } from 'vitest'
 import type { AppData } from '../types'
 import { createHabit } from '../state/habitsReducer'
-import { defaultData, importFromUrl, loadData, mergeData, saveData } from './storage'
+import { defaultData, importFromUrl, loadData, mergeData, parseData, saveData } from './storage'
 
 const withHabits = (names: string[], completions: Record<number, string[]> = {}): AppData => {
   const data = defaultData()
   data.habits = names.map((name, i) => createHabit({ name, emoji: '✨', color: '#059669' }, i))
-  for (const [i, days] of Object.entries(completions)) data.completions[data.habits[+i].id] = days
+  for (const [i, days] of Object.entries(completions)) data.completions[data.habits[+i]!.id] = days
   return data
 }
+
+describe('parseData', () => {
+  it('fills in missing optional fields instead of trusting them', () => {
+    const parsed = parseData({
+      version: 1,
+      habits: [{ id: 'a', name: 'Read' }, { id: 'b', name: 'Walk', order: 'x', archived: 'yes', frequency: null }],
+      completions: { a: ['2026-10-21', '2026-10-21', 'not-a-date', 42, '2026-10-20'] },
+    })
+    expect(parsed?.habits).toEqual([
+      expect.objectContaining({ id: 'a', emoji: '✨', order: 0, archived: false, frequency: { type: 'daily' } }),
+      expect.objectContaining({ id: 'b', order: 1, archived: false, frequency: { type: 'daily' } }),
+    ])
+    // de-duplicated, invalid entries dropped, sorted
+    expect(parsed?.completions.a).toEqual(['2026-10-20', '2026-10-21'])
+  })
+
+  it('rejects habits without an id or name', () => {
+    expect(parseData({ version: 1, habits: [{ name: 'No id' }], completions: {} })).toBeNull()
+  })
+})
 
 describe('mergeData', () => {
   it('keeps every habit from both sides, imported ones last', () => {
@@ -18,16 +38,16 @@ describe('mergeData', () => {
     expect(merged.habits.map((h) => [h.name, h.order])).toEqual([
       ['Drink 8 glass of water', 0], ['Read', 1], ['Walk', 2],
     ])
-    expect(merged.completions[incoming.habits[0].id]).toEqual(['2026-10-20'])
-    expect(merged.completions[current.habits[0].id]).toEqual(['2026-10-21'])
+    expect(merged.completions[incoming.habits[0]!.id]).toEqual(['2026-10-20'])
+    expect(merged.completions[current.habits[0]!.id]).toEqual(['2026-10-21'])
   })
 
   it('is idempotent and unions check-ins for the same habit', () => {
     const current = withHabits(['Read'], { 0: ['2026-10-20'] })
-    const incoming: AppData = { ...current, completions: { [current.habits[0].id]: ['2026-10-19', '2026-10-20'] } }
+    const incoming: AppData = { ...current, completions: { [current.habits[0]!.id]: ['2026-10-19', '2026-10-20'] } }
     const merged = mergeData(current, incoming)
     expect(merged.habits).toHaveLength(1)
-    expect(merged.completions[current.habits[0].id]).toEqual(['2026-10-19', '2026-10-20'])
+    expect(merged.completions[current.habits[0]!.id]).toEqual(['2026-10-19', '2026-10-20'])
     expect(mergeData(merged, incoming)).toEqual(merged)
   })
 })

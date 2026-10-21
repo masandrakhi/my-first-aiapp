@@ -1,22 +1,23 @@
+import { useMemo } from 'react'
 import clsx from 'clsx'
 import { Check } from 'lucide-react'
 import type { DateKey, Habit } from '../types'
-import { fromDateKey, startOfWeek, weekDays } from '../lib/dates'
+import { DAY_LETTERS, formatDayLabel, startOfWeek, weekDays } from '../lib/dates'
+import { completionSet } from '../lib/stats'
 import { readableTextOn } from '../lib/palette'
 
 interface WeekStripProps {
   habit: Habit
-  completions: DateKey[]
+  completions: readonly DateKey[]
   today: DateKey
   onToggle: (date: DateKey) => void
 }
 
-const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-
 /** This week's Mon–Sun as small tappable days, so a forgotten check-in can be logged later. */
 export function WeekStrip({ habit, completions, today, onToggle }: WeekStripProps) {
-  const done = new Set(completions)
-  const days = weekDays(startOfWeek(today))
+  const done = completionSet(completions)
+  const days = useMemo(() => weekDays(startOfWeek(today)), [today])
+  const checkColor = readableTextOn(habit.color)
 
   return (
     <div className="mt-3 grid grid-cols-7 gap-1 border-t border-stone-900/5 pt-3 dark:border-white/10" role="group" aria-label={`${habit.name} this week`}>
@@ -24,14 +25,13 @@ export function WeekStrip({ habit, completions, today, onToggle }: WeekStripProp
         const isDone = done.has(d)
         const isToday = d === today
         const isFuture = d > today
-        const label = fromDateKey(d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
         return (
           <button
             key={d}
             type="button"
             disabled={isFuture}
             aria-pressed={isDone}
-            aria-label={`${habit.name}, ${label}`}
+            aria-label={`${habit.name}, ${formatDayLabel(d)}`}
             onClick={() => onToggle(d)}
             className="group/day flex flex-col items-center gap-1 rounded-xl py-1 disabled:cursor-not-allowed"
           >
@@ -50,11 +50,11 @@ export function WeekStrip({ habit, completions, today, onToggle }: WeekStripProp
                 isFuture && 'border-[1.5px] border-dashed border-stone-300 dark:border-stone-700',
               )}
               style={{
-                ...(isDone ? { backgroundColor: habit.color } : {}),
-                ...(isToday ? { boxShadow: `0 0 0 2px ${habit.color}` } : {}),
+                backgroundColor: isDone ? habit.color : undefined,
+                boxShadow: isToday ? `0 0 0 2px ${habit.color}` : undefined,
               }}
             >
-              {isDone && <Check className="size-3.5" strokeWidth={3.5} style={{ color: readableTextOn(habit.color) }} />}
+              {isDone && <Check className="size-3.5" strokeWidth={3.5} style={{ color: checkColor }} aria-hidden="true" />}
             </span>
           </button>
         )

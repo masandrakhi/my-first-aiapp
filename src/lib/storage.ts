@@ -1,4 +1,4 @@
-import type { AppData, Habit } from '../types'
+import type { AppData, Completions, Frequency, Habit } from '../types'
 import { migrateColor } from './palette'
 
 export const STORAGE_KEY = 'habit-tracker:v1'
@@ -7,34 +7,54 @@ export function defaultData(): AppData {
   return { version: 1, habits: [], completions: {}, settings: { theme: 'system', collapseDone: true } }
 }
 
-function isHabit(value: unknown): value is Habit {
-  const h = value as Habit
-  return (
-    typeof h === 'object' && h !== null &&
-    typeof h.id === 'string' && typeof h.name === 'string' &&
-    typeof h.emoji === 'string' && typeof h.color === 'string' &&
-    typeof h.frequency === 'object' && h.frequency !== null
-  )
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
+
+function parseFrequency(v: unknown): Frequency {
+  if (isRecord(v) && v.type === 'weekly' && Array.isArray(v.days)) {
+    return { type: 'weekly', days: v.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) }
+  }
+  return { type: 'daily' }
+}
+
+/**
+ * A habit with all required fields, or null when the essentials (id, name) are missing.
+ * Optional-ish fields get sensible defaults so older or hand-edited data still loads.
+ */
+function parseHabit(v: unknown, index: number): Habit | null {
+  if (!isRecord(v) || typeof v.id !== 'string' || typeof v.name !== 'string') return null
+  return {
+    id: v.id,
+    name: v.name,
+    emoji: typeof v.emoji === 'string' ? v.emoji : '✨',
+    color: migrateColor(typeof v.color === 'string' ? v.color : '#9333ea'),
+    frequency: parseFrequency(v.frequency),
+    createdAt: typeof v.createdAt === 'string' ? v.createdAt : new Date(0).toISOString(),
+    archived: v.archived === true,
+    order: typeof v.order === 'number' && Number.isFinite(v.order) ? v.order : index,
+  }
 }
 
 /** Returns a valid AppData or null if `raw` can't be trusted. */
 export function parseData(raw: unknown): AppData | null {
-  const d = raw as AppData
-  if (typeof d !== 'object' || d === null || d.version !== 1) return null
-  if (!Array.isArray(d.habits) || !d.habits.every(isHabit)) return null
-  if (typeof d.completions !== 'object' || d.completions === null) return null
-  const completions: AppData['completions'] = {}
-  for (const [id, days] of Object.entries(d.completions)) {
-    if (Array.isArray(days)) completions[id] = days.filter((k): k is string => typeof k === 'string')
+  if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.habits) || !isRecord(raw.completions)) return null
+  const habits = raw.habits.map(parseHabit)
+  if (habits.some((h) => h === null)) return null
+
+  const completions: Completions = {}
+  for (const [id, days] of Object.entries(raw.completions)) {
+    if (Array.isArray(days)) {
+      completions[id] = [...new Set(days.filter((k): k is string => typeof k === 'string' && DATE_KEY.test(k)))].sort()
+    }
   }
-  const theme = d.settings?.theme
+  const settings = isRecord(raw.settings) ? raw.settings : {}
   return {
     version: 1,
-    habits: d.habits.map((h) => ({ ...h, color: migrateColor(h.color) })),
+    habits: habits as Habit[],
     completions,
     settings: {
-      theme: theme === 'light' || theme === 'dark' ? theme : 'system',
-      collapseDone: d.settings?.collapseDone !== false,
+      theme: settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'system',
+      collapseDone: settings.collapseDone !== false,
     },
   }
 }
@@ -76,7 +96,7 @@ export function mergeData(current: AppData, incoming: AppData): AppData {
     .filter((h) => !known.has(h.id))
     .map((h) => ({ ...h, order: nextOrder++ }))
 
-  const completions: AppData['completions'] = { ...current.completions }
+  const completions: Completions = { ...current.completions }
   for (const [id, days] of Object.entries(incoming.completions)) {
     completions[id] = [...new Set([...(completions[id] ?? []), ...days])].sort()
   }
@@ -103,10 +123,13 @@ export function importFromUrl(): boolean {
   }
 }
 
-export function saveData(data: AppData): void {
+/** Writes `data`; returns the serialized string so callers can skip identical rewrites. */
+export function saveData(data: AppData): string {
+  const json = JSON.stringify(data)
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    localStorage.setItem(STORAGE_KEY, json)
   } catch {
     // Storage full or blocked (private mode) — keep running in memory.
   }
+  return json
 }

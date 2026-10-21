@@ -1,6 +1,7 @@
-import { useState, type CSSProperties } from 'react'
+import { useState } from 'react'
 import clsx from 'clsx'
-import { HABIT_COLORS, readableTextOn } from '../lib/palette'
+import { cssVars } from '../lib/css'
+import { colorAt, readableTextOn } from '../lib/palette'
 
 interface CheckButtonProps {
   checked: boolean
@@ -92,7 +93,7 @@ function MiniBurst({ color }: { color: string }) {
         rot: (Math.random() - 0.5) * 540,
         size: 4 + Math.random() * 4,
         round: i % 3 === 0,
-        color: i % 2 === 0 ? color : HABIT_COLORS[i % HABIT_COLORS.length],
+        color: i % 2 === 0 ? color : colorAt(i),
       }
     }),
   )
@@ -103,17 +104,15 @@ function MiniBurst({ color }: { color: string }) {
         <span
           key={i}
           className="absolute left-1/2 top-1/2 block animate-burst"
-          style={
-            {
-              width: p.size,
-              height: p.round ? p.size : p.size * 1.8,
-              borderRadius: p.round ? '9999px' : '1px',
-              backgroundColor: p.color,
-              '--x': `${p.x}px`,
-              '--y': `${p.y}px`,
-              '--rot': `${p.rot}deg`,
-            } as CSSProperties
-          }
+          style={cssVars({
+            width: p.size,
+            height: p.round ? p.size : p.size * 1.8,
+            borderRadius: p.round ? '9999px' : '1px',
+            backgroundColor: p.color,
+            '--x': `${p.x}px`,
+            '--y': `${p.y}px`,
+            '--rot': `${p.rot}deg`,
+          })}
         />
       ))}
     </span>

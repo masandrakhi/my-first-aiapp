@@ -1,4 +1,4 @@
-import { Flame, Monitor, Moon, Sun } from 'lucide-react'
+import { Flame, Monitor, Moon, Sun, type LucideIcon } from 'lucide-react'
 import type { DateKey, Theme } from '../types'
 import { formatLongDate } from '../lib/dates'
 import { messageForDay } from '../lib/motivation'
@@ -7,6 +7,8 @@ import { ProgressRing } from './ProgressRing'
 
 interface HeaderProps {
   today: DateKey
+  /** Current hour (0–23), for the greeting. */
+  hour: number
   doneToday: number
   totalToday: number
   theme: Theme
@@ -20,10 +22,10 @@ function greeting(hour: number): string {
   return 'Good evening'
 }
 
-const THEME_ICON = { system: Monitor, light: Sun, dark: Moon }
-const THEME_NEXT_LABEL = { system: 'light', light: 'dark', dark: 'system' }
+const THEME_ICON: Record<Theme, LucideIcon> = { system: Monitor, light: Sun, dark: Moon }
+const THEME_NEXT_LABEL: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' }
 
-export function Header({ today, doneToday, totalToday, theme, onCycleTheme }: HeaderProps) {
+export function Header({ today, hour, doneToday, totalToday, theme, onCycleTheme }: HeaderProps) {
   const ThemeIcon = THEME_ICON[theme]
   const allDone = totalToday > 0 && doneToday === totalToday
 
@@ -52,7 +54,7 @@ export function Header({ today, doneToday, totalToday, theme, onCycleTheme }: He
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold tracking-wide text-stone-600 uppercase dark:text-stone-400">{formatLongDate(today)}</p>
           <h1 className="mt-1 text-xl leading-snug font-bold tracking-tight">
-            {allDone ? 'Perfect day' : greeting(new Date().getHours())},{' '}
+            {allDone ? 'Perfect day' : greeting(hour)},{' '}
             <span className="whitespace-nowrap">
               <span className="text-accent-600 dark:text-accent-400">{USER_NAME}</span> {allDone ? '🎉' : '👋'}
             </span>

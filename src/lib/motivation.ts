@@ -40,5 +40,5 @@ const MS_PER_DAY = 86_400_000
 export function messageForDay(key: DateKey): string {
   const date = fromDateKey(key)
   const dayNumber = Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / MS_PER_DAY)
-  return MESSAGES[dayNumber % MESSAGES.length]
+  return MESSAGES[dayNumber % MESSAGES.length] ?? MESSAGES[0]
 }

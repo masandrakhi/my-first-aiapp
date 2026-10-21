@@ -1,45 +1,50 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
-import type { DateKey, Habit, HabitId } from '../types'
-import { addDays, formatWeekRange, fromDateKey, startOfWeek, weekDays } from '../lib/dates'
+import type { Completions, DateKey, Habit } from '../types'
+import { addDays, DAY_LETTERS, formatDayLabel, formatWeekRange, fromDateKey, startOfWeek, weekDays } from '../lib/dates'
 import { readableTextOn } from '../lib/palette'
+import { completionSet } from '../lib/stats'
 
 interface WeeklyGridProps {
-  habits: Habit[]
-  completions: Record<HabitId, DateKey[]>
+  habits: readonly Habit[]
+  completions: Completions
   today: DateKey
   onToggle: (habit: Habit, date: DateKey) => void
 }
 
-const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 const ROW_DELAY = 70 // ms between rows in the load animation
 const DOT_DELAY = 35 // ms between dots in a row
 
 export function WeeklyGrid({ habits, completions, today, onToggle }: WeeklyGridProps) {
-  const thisWeek = startOfWeek(today)
-  const [weekStart, setWeekStart] = useState(thisWeek)
-  const days = weekDays(weekStart)
-  const isCurrentWeek = weekStart === thisWeek
+  // Weeks back from the current one. Relative, so the view follows along when the day rolls over.
+  const [weeksAgo, setWeeksAgo] = useState(0)
+  const weekStart = useMemo(() => addDays(startOfWeek(today), -7 * weeksAgo), [today, weeksAgo])
+  const days = useMemo(() => weekDays(weekStart), [weekStart])
+  const isCurrentWeek = weeksAgo === 0
+  const doneIn = (h: Habit) => completionSet(completions[h.id] ?? [])
 
-  const doneSets = new Map(habits.map((h) => [h.id, new Set(completions[h.id] ?? [])]))
-  const elapsedDays = days.filter((d) => d <= today)
-  const checkIns = habits.reduce((sum, h) => sum + elapsedDays.filter((d) => doneSets.get(h.id)!.has(d)).length, 0)
-  const possible = habits.length * elapsedDays.length
-  const perfectDays = new Set(
-    habits.length === 0 ? [] : elapsedDays.filter((d) => habits.every((h) => doneSets.get(h.id)!.has(d))),
-  )
+  const { checkIns, possible, perfectDays, elapsed } = useMemo(() => {
+    const elapsedDays = days.filter((d) => d <= today)
+    const sets = habits.map((h) => completionSet(completions[h.id] ?? []))
+    return {
+      checkIns: sets.reduce((sum, set) => sum + elapsedDays.filter((d) => set.has(d)).length, 0),
+      possible: habits.length * elapsedDays.length,
+      perfectDays: new Set(sets.length === 0 ? [] : elapsedDays.filter((d) => sets.every((set) => set.has(d)))),
+      elapsed: elapsedDays.length,
+    }
+  }, [days, habits, completions, today])
 
   return (
     <section aria-label="Weekly summary">
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
-          onClick={() => setWeekStart(addDays(weekStart, -7))}
+          onClick={() => setWeeksAgo((w) => w + 1)}
           aria-label="Previous week"
           className="grid size-10 place-items-center rounded-full text-stone-600 hover:bg-stone-200/60 dark:hover:bg-stone-800"
         >
-          <ChevronLeft className="size-5" />
+          <ChevronLeft className="size-5" aria-hidden="true" />
         </button>
         <div className="text-center">
           <p className="font-semibold">{isCurrentWeek ? 'This week' : 'Past week'}</p>
@@ -47,12 +52,12 @@ export function WeeklyGrid({ habits, completions, today, onToggle }: WeeklyGridP
         </div>
         <button
           type="button"
-          onClick={() => setWeekStart(addDays(weekStart, 7))}
+          onClick={() => setWeeksAgo((w) => Math.max(0, w - 1))}
           disabled={isCurrentWeek}
           aria-label="Next week"
           className="grid size-10 place-items-center rounded-full text-stone-600 hover:bg-stone-200/60 disabled:invisible dark:hover:bg-stone-800"
         >
-          <ChevronRight className="size-5" />
+          <ChevronRight className="size-5" aria-hidden="true" />
         </button>
       </div>
 
@@ -67,7 +72,7 @@ export function WeeklyGrid({ habits, completions, today, onToggle }: WeeklyGridP
             rate={possible === 0 ? 0 : checkIns / possible}
             checkIns={checkIns}
             perfectDays={perfectDays.size}
-            daysLeft={7 - elapsedDays.length}
+            daysLeft={7 - elapsed}
           />
 
           <div className="animate-fade-up rounded-3xl bg-white p-4 shadow-sm ring-1 ring-stone-900/5 dark:bg-stone-900 dark:ring-white/10" style={{ animationDelay: '80ms' }}>
@@ -96,7 +101,7 @@ export function WeeklyGrid({ habits, completions, today, onToggle }: WeeklyGridP
 
             <ul className="divide-y divide-stone-900/5 dark:divide-white/5">
               {habits.map((habit, row) => {
-                const done = doneSets.get(habit.id)!
+                const done = doneIn(habit)
                 const count = days.filter((d) => done.has(d)).length
                 return (
                   <li
@@ -148,13 +153,12 @@ interface DotProps {
 }
 
 function Dot({ habit, date, done, isToday, isFuture, delay, onToggle }: DotProps) {
-  const label = fromDateKey(date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
   return (
     <button
       type="button"
       disabled={isFuture}
       aria-pressed={done}
-      aria-label={`${habit.name}, ${label}`}
+      aria-label={`${habit.name}, ${formatDayLabel(date)}`}
       onClick={onToggle}
       className="group/dot grid h-9 place-items-center rounded-full disabled:cursor-default"
     >

@@ -2,13 +2,16 @@ import type { DateKey, Habit } from '../types'
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
+/** Monday-first single-letter day names, matching `weekDays()`. */
+export const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const
+
 /** Local-time date key. Never use toISOString() here: it is UTC and shifts days. */
 export function toDateKey(date: Date): DateKey {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 export function fromDateKey(key: DateKey): Date {
-  const [y, m, d] = key.split('-').map(Number)
+  const [y = 1970, m = 1, d = 1] = key.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
 
@@ -30,21 +33,30 @@ export function startOfWeek(key: DateKey): DateKey {
 
 /** The seven date keys Mon..Sun starting at `weekStart`. */
 export function weekDays(weekStart: DateKey): DateKey[] {
-  return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  const date = fromDateKey(weekStart)
+  return Array.from({ length: 7 }, (_, i) => {
+    if (i > 0) date.setDate(date.getDate() + 1)
+    return toDateKey(date)
+  })
 }
 
-export function isScheduled(habit: Habit, key: DateKey): boolean {
-  if (habit.frequency.type === 'daily') return true
-  return habit.frequency.days.includes(fromDateKey(key).getDay())
+export function isScheduled(habit: Habit, day: Date): boolean {
+  return habit.frequency.type === 'daily' || habit.frequency.days.includes(day.getDay())
 }
 
-export function formatLongDate(key: DateKey): string {
-  return fromDateKey(key).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-}
+const longDate = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+const weekdayName = new Intl.DateTimeFormat(undefined, { weekday: 'long' })
+const shortDate = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
 
+/** "Wednesday, October 21" */
+export const formatLongDate = (key: DateKey) => longDate.format(fromDateKey(key))
+/** "Wednesday, Oct 21" — used in accessible labels for day buttons. */
+export const formatDayLabel = (key: DateKey) => dayLabel.format(fromDateKey(key))
+/** "Wednesday" */
+export const formatWeekday = (key: DateKey) => weekdayName.format(fromDateKey(key))
+
+/** "Oct 19 – Oct 25" */
 export function formatWeekRange(weekStart: DateKey): string {
-  const start = fromDateKey(weekStart)
-  const end = fromDateKey(addDays(weekStart, 6))
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-  return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`
+  return `${shortDate.format(fromDateKey(weekStart))} – ${shortDate.format(fromDateKey(addDays(weekStart, 6)))}`
 }

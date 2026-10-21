@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# Habits
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A small, motivating daily habit tracker. React 19 + TypeScript (strict) + Tailwind CSS v4, built with Vite.
+All data stays in the browser (localStorage); there is no server or account.
 
-Currently, two official plugins are available:
+## Scripts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # http://127.0.0.1:5173 (localhost redirects there)
+npm test         # Vitest + Testing Library + axe accessibility checks
+npm run build    # type-check and production build
+npm run lint     # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Structure
+
+```
+src/
+  App.tsx                 screen shell: header, tabs, dialogs, celebrations
+  components/             UI (TodayView, WeeklyGrid, HabitCard, CheckButton, …)
+  components/ui/          Modal and ConfirmDialog primitives
+  hooks/                  useClock, useStableCallback, useSortableWiring
+  state/                  reducer, context + useHabits(), HabitsProvider (persistence)
+  lib/                    pure helpers: dates, stats, storage, palette, motivation
+```
+
+## Data
+
+- One key, `habit-tracker:v1`, holding `{ version, habits, completions, settings }`.
+- Saved after every change (never on startup); unreadable data is copied to a
+  `…:backup:<timestamp>` key before the app starts fresh.
+- `localhost` and `127.0.0.1` are separate storage origins, so the app always uses
+  `127.0.0.1` and merges anything saved under `localhost` once.
+
+## Accessibility
+
+Targets WCAG 2.2 AA: contrast-checked palette, visible focus, keyboard support for every
+control (including drag-to-reorder), screen-reader announcements, and reduced-motion support.

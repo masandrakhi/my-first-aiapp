@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Habit } from '../types'
-import { currentStreak, longestStreak } from './stats'
+import { completionSet, currentStreak } from './stats'
 import { addDays, startOfWeek, toDateKey, weekDays } from './dates'
 import { MESSAGES, messageForDay } from './motivation'
 
@@ -38,13 +38,19 @@ describe('currentStreak', () => {
   it('crosses month boundaries', () => {
     expect(currentStreak(habit(), ['2026-09-30', '2026-10-01'], '2026-10-01')).toBe(2)
   })
+
+  it('handles a year-long streak quickly', () => {
+    const days = Array.from({ length: 365 }, (_, i) => addDays(TODAY, -i)).reverse()
+    expect(currentStreak(habit(), days, TODAY)).toBe(365)
+  })
 })
 
-describe('longestStreak', () => {
-  it('finds the best run', () => {
-    const days = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-05', '2026-10-06']
-    expect(longestStreak(habit(), days)).toBe(3)
-    expect(longestStreak(habit(), [])).toBe(0)
+describe('completionSet', () => {
+  it('reuses one Set per completions array', () => {
+    const days = ['2026-10-20', '2026-10-21']
+    expect(completionSet(days)).toBe(completionSet(days))
+    expect(completionSet(days).has('2026-10-21')).toBe(true)
+    expect(completionSet([...days])).not.toBe(completionSet(days))
   })
 })
 

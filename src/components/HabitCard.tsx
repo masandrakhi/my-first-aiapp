@@ -143,7 +143,7 @@ export function HabitCard({ habit, done, streak, onEdit, onDelete, children, foo
           <button
             type="button"
             aria-label={`Options for ${habit.name}`}
-                        aria-expanded={menuOpen}
+            aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}
             ref={menuButtonRef}
             className="grid size-9 place-items-center rounded-full text-stone-600 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-200"

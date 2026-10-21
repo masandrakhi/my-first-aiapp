@@ -2,15 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { SINK_DELAY_MS } from './components/TodayView'
 import App from './App'
-import { HabitsProvider } from './state/HabitsContext'
+import { HabitsProvider } from './state/HabitsProvider'
 import { STORAGE_KEY } from './lib/storage'
 
-// jsdom has no matchMedia
-window.matchMedia ??= ((query: string) => ({
-  matches: false, media: query, onchange: null,
-  addEventListener: () => {}, removeEventListener: () => {},
-  addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-})) as typeof window.matchMedia
 
 const renderApp = () => render(<HabitsProvider><App /></HabitsProvider>)
 
@@ -50,7 +44,7 @@ describe('App', () => {
       const days = within(strip).getAllByRole('button')
       expect(days).toHaveLength(7)
       expect(days[3]).toBeDisabled() // Thursday is in the future
-      fireEvent.click(days[1]) // Tuesday (yesterday)
+      fireEvent.click(days[1]!) // Tuesday (yesterday)
       expect(days[1]).toHaveAttribute('aria-pressed', 'true')
       expect(screen.getByText(/1 day/)).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: /mark stretch done today/i }))
@@ -65,7 +59,7 @@ describe('App', () => {
     try {
       renderApp()
       for (const name of ['Walk', 'Journal']) {
-        fireEvent.click(screen.getAllByRole('button', { name: /add (your first )?habit/i })[0])
+        fireEvent.click(screen.getAllByRole('button', { name: /add (your first )?habit/i })[0]!)
         const dialog = screen.getByRole('dialog')
         fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: name } })
         fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))

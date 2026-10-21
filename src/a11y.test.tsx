@@ -2,13 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import axe from 'axe-core'
 import App from './App'
-import { HabitsProvider } from './state/HabitsContext'
+import { HabitsProvider } from './state/HabitsProvider'
 
-window.matchMedia ??= ((query: string) => ({
-  matches: false, media: query, onchange: null,
-  addEventListener: () => {}, removeEventListener: () => {},
-  addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-})) as typeof window.matchMedia
 
 /** Runs axe with the WCAG 2.x A/AA rules. jsdom can't compute colors, so contrast is checked in the browser and in palette.test.ts. */
 async function violations(root: Element = document.body) {
@@ -20,7 +15,7 @@ async function violations(root: Element = document.body) {
 }
 
 function addHabit(name: string) {
-  fireEvent.click(screen.getAllByRole('button', { name: /add (your first )?habit/i })[0])
+  fireEvent.click(screen.getAllByRole('button', { name: /add (your first )?habit/i })[0]!)
   const dialog = screen.getByRole('dialog')
   fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: name } })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))

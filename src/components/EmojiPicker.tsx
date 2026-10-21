@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { HABIT_EMOJI } from '../lib/palette'
 
 const COLUMNS = 8
+const MOVES: Partial<Record<string, number>> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: COLUMNS, ArrowUp: -COLUMNS }
 
 interface EmojiPickerProps {
   value: string
@@ -13,15 +14,16 @@ interface EmojiPickerProps {
 /** Radio-group grid with arrow-key navigation (one tab stop). */
 export function EmojiPicker({ value, onChange, accent }: EmojiPickerProps) {
   const gridRef = useRef<HTMLDivElement>(null)
-  const selected = Math.max(0, HABIT_EMOJI.indexOf(value as (typeof HABIT_EMOJI)[number]))
+  const selected = Math.max(0, HABIT_EMOJI.findIndex((e) => e === value))
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const moves: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: COLUMNS, ArrowUp: -COLUMNS }
-    const delta = moves[e.key]
+    const delta = MOVES[e.key]
     if (delta === undefined) return
     e.preventDefault()
     const next = (selected + delta + HABIT_EMOJI.length) % HABIT_EMOJI.length
-    onChange(HABIT_EMOJI[next])
+    const emoji = HABIT_EMOJI[next]
+    if (!emoji) return
+    onChange(emoji)
     gridRef.current?.querySelectorAll<HTMLButtonElement>('button')[next]?.focus()
   }
 

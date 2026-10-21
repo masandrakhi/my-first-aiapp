@@ -1,39 +1,39 @@
 import type { DateKey, Habit } from '../types'
-import { addDays, isScheduled, todayKey } from './dates'
+import { fromDateKey, isScheduled, todayKey, toDateKey } from './dates'
 
-// Safety bound so a corrupt createdAt can never loop forever.
+// Safety bound so corrupt data can never loop forever.
 const MAX_DAYS = 3660
+
+// The reducer replaces a habit's completions array whenever it changes, so the array itself is a
+// perfect cache key: unchanged habits reuse their Set instead of rebuilding it on every render.
+const setCache = new WeakMap<readonly DateKey[], ReadonlySet<DateKey>>()
+
+/** Fast membership lookups for a habit's check-in dates (cached per array). */
+export function completionSet(days: readonly DateKey[]): ReadonlySet<DateKey> {
+  let set = setCache.get(days)
+  if (!set) {
+    set = new Set(days)
+    setCache.set(days, set)
+  }
+  return set
+}
 
 /**
  * Consecutive scheduled days completed, walking back from today.
  * If today is not done yet it doesn't break the streak — counting starts from yesterday.
  */
-export function currentStreak(habit: Habit, completions: DateKey[], today: DateKey = todayKey()): number {
-  const done = new Set(completions)
-  let day = today
-  if (!done.has(day)) day = addDays(day, -1)
+export function currentStreak(habit: Habit, completions: readonly DateKey[], today: DateKey = todayKey()): number {
+  if (completions.length === 0) return 0
+  const done = completionSet(completions)
+  // Step a single Date backwards rather than parsing a key per day.
+  const cursor = fromDateKey(today)
+  if (!done.has(today)) cursor.setDate(cursor.getDate() - 1)
 
   let streak = 0
-  for (let i = 0; i < MAX_DAYS; i++, day = addDays(day, -1)) {
-    if (!isScheduled(habit, day)) continue
-    if (!done.has(day)) break
+  for (let i = 0; i < MAX_DAYS; i++, cursor.setDate(cursor.getDate() - 1)) {
+    if (!isScheduled(habit, cursor)) continue
+    if (!done.has(toDateKey(cursor))) break
     streak++
   }
   return streak
-}
-
-export function longestStreak(habit: Habit, completions: DateKey[]): number {
-  if (completions.length === 0) return 0
-  const done = new Set(completions)
-  const sorted = [...done].sort()
-  let best = 0
-  let run = 0
-  let day = sorted[0]
-  const last = sorted[sorted.length - 1]
-  for (let i = 0; i < MAX_DAYS && day <= last; i++, day = addDays(day, 1)) {
-    if (!isScheduled(habit, day)) continue
-    run = done.has(day) ? run + 1 : 0
-    best = Math.max(best, run)
-  }
-  return best
 }
