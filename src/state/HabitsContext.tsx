@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react'
 import type { AppData, DateKey, HabitId, Theme } from '../types'
 import { loadData, parseData, saveData, STORAGE_KEY } from '../lib/storage'
 import { createHabit, habitsReducer, type HabitDraft } from './habitsReducer'
@@ -20,8 +20,17 @@ const HabitsContext = createContext<HabitsApi | null>(null)
 export function HabitsProvider({ children }: { children: ReactNode }) {
   const [data, dispatch] = useReducer(habitsReducer, undefined, loadData)
 
-  // Every change is saved immediately — no save button.
-  useEffect(() => saveData(data), [data])
+  // Every change is saved immediately — no save button. The data as loaded is never written back,
+  // so opening the app can't overwrite what's stored (only a real change does).
+  const loaded = useRef(data)
+  useEffect(() => {
+    if (data !== loaded.current) saveData(data)
+  }, [data])
+
+  // Ask the browser to keep our storage even when disk space runs low (it may decline; that's fine).
+  useEffect(() => {
+    void navigator.storage?.persist?.().catch(() => {})
+  }, [])
 
   // Keep multiple open tabs in sync.
   useEffect(() => {

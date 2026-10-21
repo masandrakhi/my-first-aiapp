@@ -91,6 +91,32 @@ describe('App', () => {
     }
   })
 
+  it('keeps habits and progress after closing and reopening the app', () => {
+    const first = renderApp()
+    fireEvent.click(screen.getByRole('button', { name: /add your first habit/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: 'Floss' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
+    fireEvent.click(screen.getByRole('button', { name: /mark floss done today/i }))
+    first.unmount() // "close the browser"
+
+    renderApp() // "come back"
+    fireEvent.click(screen.getByRole('button', { name: /1 done today/i })) // done habits start folded
+    expect(screen.getByText('Floss')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /mark floss done today/i })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('never writes to storage just by opening the app', () => {
+    localStorage.setItem(STORAGE_KEY, '{"version":1,"habits":[],"completions":{},"settings":{"theme":"dark","collapseDone":true}}')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    try {
+      renderApp()
+      expect(setItem).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything())
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
   it('disables saving an empty name', () => {
     renderApp()
     fireEvent.click(screen.getByRole('button', { name: 'Add habit' })) // the "+" button

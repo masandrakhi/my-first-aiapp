@@ -64,6 +64,45 @@ export function loadData(): AppData {
   return defaultData()
 }
 
+/**
+ * Union of two data sets: every habit from both (existing ones win on an id clash), imported
+ * habits appended after the current ones, and check-ins combined. Current settings are kept.
+ */
+export function mergeData(current: AppData, incoming: AppData): AppData {
+  const known = new Set(current.habits.map((h) => h.id))
+  let nextOrder = Math.max(-1, ...current.habits.map((h) => h.order)) + 1
+  const added = [...incoming.habits]
+    .sort((a, b) => a.order - b.order)
+    .filter((h) => !known.has(h.id))
+    .map((h) => ({ ...h, order: nextOrder++ }))
+
+  const completions: AppData['completions'] = { ...current.completions }
+  for (const [id, days] of Object.entries(incoming.completions)) {
+    completions[id] = [...new Set([...(completions[id] ?? []), ...days])].sort()
+  }
+  return { ...current, habits: [...current.habits, ...added], completions }
+}
+
+const IMPORT_PREFIX = '#import='
+
+/**
+ * Picks up habits handed over in the URL fragment (see the redirect in index.html), merges them
+ * into what's stored, and removes the fragment from the address bar. Returns true if anything was imported.
+ */
+export function importFromUrl(): boolean {
+  if (!location.hash.startsWith(IMPORT_PREFIX)) return false
+  const raw = decodeURIComponent(location.hash.slice(IMPORT_PREFIX.length))
+  history.replaceState(null, '', location.pathname + location.search)
+  try {
+    const incoming = parseData(JSON.parse(raw))
+    if (!incoming) return false
+    saveData(mergeData(loadData(), incoming))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function saveData(data: AppData): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
