@@ -1,7 +1,9 @@
 /**
  * Applies migrations to the Postgres database in DATABASE_URL (e.g. Neon).
- * On Vercel this runs as part of each deployment's build (see vercel.json), because the database
- * secrets are only readable there; a failed migration fails the deploy, so broken code never goes live.
+ * On Vercel this runs in each deployment's build (see vercel.json), because the database secrets are
+ * only readable there. A failed migration fails the deploy before the new version goes live. It runs
+ * before Vercel packages the API, so a later build failure leaves the old version serving a migrated
+ * database: keep migrations backward compatible (add, don't rename or drop in the same release).
  * Already-applied migrations are skipped, so running it again is harmless.
  */
 import { existsSync } from 'node:fs'

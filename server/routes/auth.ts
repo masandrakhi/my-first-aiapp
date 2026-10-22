@@ -115,7 +115,8 @@ authRoutes.post('/refresh', async (c) => {
   }
 
   const result = await rotateRefreshToken(deps, presented)
-  if (!result.ok) {
+  // `=== false`, not `!…ok`: Vercel's own type-check can only narrow the union this way.
+  if (result.ok === false) {
     // Reuse means a refresh token was presented twice: possibly stolen. The session is already revoked.
     if (result.reason === 'reuse') audit(c, 'refresh_reuse_detected', { userId: result.userId, sessionId: result.sessionId }, 'warn')
     else audit(c, 'refresh_failed', { reason: result.reason, userId: result.userId, sessionId: result.sessionId })

@@ -63,7 +63,8 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!token) throw unauthorized()
 
   const verified = await verifyAccessToken(deps.config, token, deps.now())
-  if (!verified.ok) {
+  // `=== false`, not `!…ok`: Vercel's own type-check can only narrow the union this way.
+  if (verified.ok === false) {
     throw verified.reason === 'expired'
       ? new HttpError(401, 'token_expired', 'Your sign-in needs refreshing.')
       : unauthorized()

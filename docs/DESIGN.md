@@ -118,7 +118,7 @@ Every row of user data carries `user_id`. Completions also have a composite fore
 
 **Device storage (browser).** Only `habits:theme` (for first paint) and `habits:device-id` (import idempotency). Legacy `habit-tracker:v1` data from v1 is read once for the import prompt and deleted after a successful import.
 
-**Migrations.** Drizzle generates SQL into `server/db/migrations`; `npm run db:migrate` applies them to the database in `DATABASE_URL`. Vercel runs it in every deployment's build (`buildCommand` in `vercel.json`), because the database secrets are only readable there; a failed migration fails the deploy, and already-applied migrations are skipped. Preview deployments migrate their own isolated database copy.
+**Migrations.** Drizzle generates SQL into `server/db/migrations`; `npm run db:migrate` applies them to the database in `DATABASE_URL`. Vercel runs it in every deployment's build (`buildCommand` in `vercel.json`), because the database secrets are only readable there; a failed migration fails the deploy, and already-applied migrations are skipped. Because migrations run before the API is packaged, a later build failure leaves the current version running against the new schema, so migrations must stay backward compatible (add columns and tables; rename or drop only in a later release). Preview deployments migrate their own isolated database copy.
 
 ## 5. Interface design
 

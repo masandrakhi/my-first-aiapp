@@ -1,0 +1,9 @@
+{
+  // Vercel type-checks the function with the tsconfig.json nearest to it. Without this file it found the
+  // root one (which only lists project references) and checked with loose defaults, printing false errors.
+  "extends": "../tsconfig.server.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.api.tsbuildinfo"
+  },
+  "include": ["."]
+}
