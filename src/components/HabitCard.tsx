@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from 'react'
-import { Check, Ellipsis, Flame, GripVertical, Pencil, Trash2 } from 'lucide-react'
+import { Check, Flame, GripVertical } from 'lucide-react'
 import clsx from 'clsx'
 import type { Habit } from '../types'
+import { HabitMenu } from './HabitMenu'
 
 interface HabitCardProps {
   habit: Habit
@@ -28,10 +29,6 @@ export interface SortableWiring {
 }
 
 export function HabitCard({ habit, done, streak, onEdit, onDelete, children, footer, sortable, entering }: HabitCardProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
-
   // Pulse the flame whenever the streak grows.
   const prevStreak = useRef(streak)
   const [pulse, setPulse] = useState(0)
@@ -47,25 +44,6 @@ export function HabitCard({ habit, done, streak, onEdit, onDelete, children, foo
     if (done && !prevDone.current) setBouncing(true)
     prevDone.current = done
   }, [done])
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent) {
-        if (e.key !== 'Escape') return
-        setMenuOpen(false)
-        menuButtonRef.current?.focus() // return focus to the trigger
-      } else if (!menuRef.current?.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', close)
-    return () => {
-      document.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', close)
-    }
-  }, [menuOpen])
 
   return (
     <li
@@ -139,45 +117,7 @@ export function HabitCard({ habit, done, streak, onEdit, onDelete, children, foo
           )}
         </div>
 
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            aria-label={`Options for ${habit.name}`}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((o) => !o)}
-            ref={menuButtonRef}
-            className="grid size-9 place-items-center rounded-full text-stone-600 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-200"
-          >
-            <Ellipsis className="size-5" />
-          </button>
-          {menuOpen && (
-            <div
-              className="absolute right-0 top-10 z-20 w-36 animate-fade-up overflow-hidden rounded-2xl bg-white py-1 shadow-xl ring-1 ring-stone-900/10 dark:bg-stone-800 dark:ring-white/10"
-            >
-              <button
-                type="button"
-                autoFocus
-                onClick={() => {
-                  setMenuOpen(false)
-                  onEdit()
-                }}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-stone-100 dark:hover:bg-stone-700"
-              >
-                <Pencil className="size-4" /> Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false)
-                  onDelete()
-                }}
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
-              >
-                <Trash2 className="size-4" /> Delete
-              </button>
-            </div>
-          )}
-        </div>
+        <HabitMenu habitName={habit.name} onEdit={onEdit} onDelete={onDelete} />
 
         {children}
       </div>

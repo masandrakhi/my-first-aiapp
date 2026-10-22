@@ -95,7 +95,7 @@ export default function App() {
   const openDelete = useCallback((habit: Habit) => setDialog({ kind: 'delete', habit }), [])
 
   return (
-    <div className="mx-auto min-h-dvh max-w-xl px-4 pb-32">
+    <div className="mx-auto min-h-dvh max-w-xl px-4 pb-40">
       <a
         href="#main"
         className="sr-only rounded-xl bg-accent-600 px-4 py-2 font-semibold text-white focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50"
@@ -136,7 +136,7 @@ export default function App() {
             onDelete={openDelete}
           />
         ) : (
-          <WeeklyGrid habits={habits} completions={data.completions} today={today} onToggle={toggle} />
+          <WeeklyGrid habits={habits} completions={data.completions} today={today} onToggle={toggle} onEdit={openEdit} onDelete={openDelete} />
         )}
       </main>
 
@@ -144,17 +144,18 @@ export default function App() {
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200/70 bg-paper/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg dark:border-white/10 dark:bg-paper-dark/85"
       >
-        <div className="mx-auto flex h-18 max-w-xl items-center justify-around px-4">
+        <div className="relative mx-auto flex h-18 max-w-xl items-center justify-around px-4">
           <TabButton active={tab === 'today'} onClick={() => switchTab('today')} icon={ListChecks} label="Today" />
+          <TabButton active={tab === 'week'} onClick={() => switchTab('week')} icon={CalendarDays} label="Week" />
+          {/* Floats in the bottom-right corner above the tabs: in thumb reach, and on both views. */}
           <button
             type="button"
             onClick={openAdd}
             aria-label="Add habit"
-            className="-mt-8 grid size-16 place-items-center rounded-full bg-accent-600 text-white shadow-lg shadow-accent-600/40 ring-4 ring-paper transition hover:bg-accent-700 active:scale-95 dark:ring-paper-dark"
+            className="absolute right-4 bottom-full mb-4 grid size-14 place-items-center rounded-2xl bg-accent-600 text-white shadow-lg shadow-accent-600/40 transition hover:bg-accent-700 active:scale-95"
           >
             <Plus className="size-7" strokeWidth={2.5} aria-hidden="true" />
           </button>
-          <TabButton active={tab === 'week'} onClick={() => switchTab('week')} icon={CalendarDays} label="Week" />
         </div>
       </nav>
 

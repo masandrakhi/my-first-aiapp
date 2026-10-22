@@ -5,18 +5,21 @@ import type { Completions, DateKey, Habit } from '../types'
 import { addDays, DAY_LETTERS, formatDayLabel, formatWeekRange, fromDateKey, startOfWeek, weekDays } from '../lib/dates'
 import { readableTextOn } from '../lib/palette'
 import { completionSet } from '../lib/stats'
+import { HabitMenu } from './HabitMenu'
 
 interface WeeklyGridProps {
   habits: readonly Habit[]
   completions: Completions
   today: DateKey
   onToggle: (habit: Habit, date: DateKey) => void
+  onEdit: (habit: Habit) => void
+  onDelete: (habit: Habit) => void
 }
 
 const ROW_DELAY = 70 // ms between rows in the load animation
 const DOT_DELAY = 35 // ms between dots in a row
 
-export function WeeklyGrid({ habits, completions, today, onToggle }: WeeklyGridProps) {
+export function WeeklyGrid({ habits, completions, today, onToggle, onEdit, onDelete }: WeeklyGridProps) {
   // Weeks back from the current one. Relative, so the view follows along when the day rolls over.
   const [weeksAgo, setWeeksAgo] = useState(0)
   const weekStart = useMemo(() => addDays(startOfWeek(today), -7 * weeksAgo), [today, weeksAgo])
@@ -109,13 +112,22 @@ export function WeeklyGrid({ habits, completions, today, onToggle }: WeeklyGridP
                     className="animate-fade-up py-3 last:pb-0"
                     style={{ animationDelay: `${120 + row * ROW_DELAY}ms` }}
                   >
-                    <div className="mb-2 flex items-center gap-2 text-sm">
-                      <span aria-hidden="true">{habit.emoji}</span>
-                      <span className="min-w-0 flex-1 truncate font-medium">{habit.name}</span>
+                    <div className="mb-1 flex items-center gap-2 text-sm">
+                      {/* Tapping the name is a shortcut to Edit; the "…" menu also offers Delete. */}
+                      <button
+                        type="button"
+                        onClick={() => onEdit(habit)}
+                        aria-label={`Edit ${habit.name}`}
+                        className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-stone-100 dark:hover:bg-stone-800"
+                      >
+                        <span aria-hidden="true">{habit.emoji}</span>
+                        <span className="truncate font-medium">{habit.name}</span>
+                      </button>
                       <span className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 tabular-nums dark:text-stone-300">
                         <span className="size-2 rounded-full" style={{ backgroundColor: habit.color }} aria-hidden="true" />
                         {count}/7
                       </span>
+                      <HabitMenu habitName={habit.name} onEdit={() => onEdit(habit)} onDelete={() => onDelete(habit)} size="sm" />
                     </div>
                     <div className="grid grid-cols-7 gap-1">
                       {days.map((d, col) => (

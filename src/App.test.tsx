@@ -98,6 +98,41 @@ describe('App (signed in)', () => {
     expect(screen.getByRole('button', { name: /mark floss done today/i })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('edits a habit from the Week view by tapping its name', async () => {
+    const api = await renderSignedIn()
+    await addHabit('Stretch')
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Stretch' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Yoga' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /save/i }))
+    expect(await screen.findByRole('button', { name: 'Edit Yoga' })).toBeInTheDocument()
+    await waitFor(() => expect([...api.stores.values()][0]!.habits[0]!.name).toBe('Yoga'))
+  })
+
+  it('edits and deletes a habit from the Week view’s options menu', async () => {
+    const api = await renderSignedIn()
+    await addHabit('Walk')
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Options for Walk' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(within(screen.getByRole('dialog')).getByLabelText('Name')).toHaveValue('Walk')
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /cancel|close/i }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options for Walk' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Edit Walk' })).toBeNull())
+    await waitFor(() => expect([...api.stores.values()][0]!.habits).toHaveLength(0))
+  })
+
+  it('keeps the add button available on the Week view', async () => {
+    await renderSignedIn()
+    fireEvent.click(screen.getByRole('button', { name: 'Week' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add habit' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('disables saving an empty name', async () => {
     await renderSignedIn()
     fireEvent.click(screen.getByRole('button', { name: 'Add habit' })) // the "+" button
