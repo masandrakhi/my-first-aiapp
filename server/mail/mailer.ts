@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { createTransport } from 'nodemailer'
 
 export interface MailMessage {
   to: string
@@ -47,5 +48,37 @@ export class ResendMailer implements Mailer {
       body: JSON.stringify({ from: this.from, to: [message.to], subject: message.subject, text: message.text }),
     })
     if (!res.ok) throw new Error(`Email provider responded ${res.status}`)
+  }
+}
+
+export interface SmtpSettings {
+  host: string
+  port: number
+  user: string
+  pass: string
+}
+
+/** The one call SmtpMailer needs from a nodemailer transport (a fake in tests). */
+export interface SmtpTransport {
+  sendMail(mail: { from: string; to: string; subject: string; text: string }): Promise<unknown>
+}
+
+/** Production alternative to Resend: sends through an SMTP server such as Gmail (with an App Password). */
+export class SmtpMailer implements Mailer {
+  private readonly transport: SmtpTransport
+  private readonly from: string
+  constructor(transport: SmtpTransport, from: string) {
+    this.transport = transport
+    this.from = from
+  }
+
+  /** Port 465 uses TLS from the start; anything else upgrades with STARTTLS (never plain text). */
+  static connect({ host, port, user, pass }: SmtpSettings, from: string) {
+    const transport = createTransport({ host, port, secure: port === 465, requireTLS: port !== 465, auth: { user, pass } })
+    return new SmtpMailer(transport, from)
+  }
+
+  async send(message: MailMessage) {
+    await this.transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text })
   }
 }

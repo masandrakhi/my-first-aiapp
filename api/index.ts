@@ -6,16 +6,15 @@ import { createApp } from '../server/app.js'
 import { loadConfig } from '../server/config.js'
 import { createNeonDb } from '../server/db/client.js'
 import { createLogger } from '../server/logger.js'
-import { ResendMailer, type Mailer } from '../server/mail/mailer.js'
+import { selectMailer } from '../server/mail/select.js'
 
 const env = process.env
 if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set')
 const config = loadConfig(env)
 const logger = createLogger()
 
-const mailer: Mailer = env.RESEND_API_KEY
-  ? new ResendMailer(env.RESEND_API_KEY, config.mailFrom)
-  : { send: async () => logger.warn('email not sent: no email provider configured') }
+const { mailer, provider } = selectMailer(env, config.mailFrom, logger)
+logger.info('mail provider', { provider })
 
 const app = createApp({ db: createNeonDb(env.DATABASE_URL), config, mailer, logger, now: () => new Date() })
 

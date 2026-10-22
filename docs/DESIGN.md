@@ -93,7 +93,7 @@ flowchart TB
 | Passwords | Argon2id (`@node-rs/argon2`) | m = 19 MiB, t = 2, p = 1 |
 | Tokens | JWT HS256 (`jose`) + opaque refresh tokens | Signing keys rotate via `kid` |
 | Validation | zod schemas shared by client and server | `src/shared/schemas.ts` |
-| Email | Resend HTTP API (production), file outbox (development) | `server/mail/mailer.ts` |
+| Email | Gmail SMTP via nodemailer, or Resend's HTTP API (production; chosen by `server/mail/select.ts`), file outbox (development) | `server/mail/mailer.ts`, `server/mail/select.ts` |
 | Tests | Vitest; server tests against real PGlite; UI tests with an in-memory fake API | |
 
 **Local development:** `npm run dev` starts Vite on 127.0.0.1:5173 and the API on 127.0.0.1:8787; Vite proxies `/api`, so cookies and origins behave as in production. Data is in `.data/pglite`, emails in `.data/outbox`.
@@ -219,7 +219,7 @@ Today, Week, dialogs, motion and accessibility behaviour are unchanged from v1 (
 | Stolen refresh token | Low | High | HttpOnly cookie, rotation, reuse revokes family, 15-min idle, 7-day cap | — |
 | XSS stealing an access token | Low | High | CSP without inline scripts, React escaping, memory-only token | — |
 | Cross-user data access (IDOR) | Low | High | Scoped repository, branded user id, composite FK, 404s; tested | Consider Postgres row-level security |
-| Reset emails can't reach users | High until configured | Medium | Mailer abstraction | Needs a verified sending domain or SMTP option before launch |
+| Reset emails can't reach users | Low once Gmail SMTP is configured | Medium | Mailer abstraction; SMTP or Resend chosen by environment | Gmail suits a small app (a few hundred emails a day, sent from the owner's address); move to a verified domain for a larger launch |
 | Account enumeration via sign-up | Medium | Low | Generic messages elsewhere | Accepted trade-off for clear sign-up feedback |
 | Database or env misconfiguration at deploy | Low | High | Config validated at startup; separate Preview/Production databases | Deploy to Preview first, with approval |
 | Vulnerable dependency | Low | Medium | Lockfile; `npm audit` (0 vulnerabilities at writing) | Re-run before each release |
@@ -238,7 +238,7 @@ Today, Week, dialogs, motion and accessibility behaviour are unchanged from v1 (
 | Vitest, Testing Library, jsdom, axe-core, oxlint, tsx, concurrently | Tests, linting, dev tooling |
 | Vercel (Hobby), Neon (free), Resend (free) | Hosting, database, email — accounts created by the owner; no paid plans |
 
-**Environment variables** (see `.env.example`): `DATABASE_URL`, `APP_ORIGIN`, `JWT_SECRETS`, `IP_HASH_SECRET`, `COOKIE_SECURE`, `MAIL_FROM`, `RESEND_API_KEY`.
+**Environment variables** (see `.env.example`): `DATABASE_URL`, `APP_ORIGIN`, `JWT_SECRETS`, `IP_HASH_SECRET`, `COOKIE_SECURE`, `MAIL_FROM`, and for email either `SMTP_USER` + `SMTP_PASS` (Gmail App Password; optional `SMTP_HOST`, `SMTP_PORT`) or `RESEND_API_KEY`.
 
 ## 10. Glossary of terms
 
