@@ -1,7 +1,7 @@
 # Habits
 
 A small, motivating daily habit tracker. React 19 + TypeScript (strict) + Tailwind CSS v4, built with Vite.
-All data stays in the browser (localStorage); there is no server or account.
+Accounts with email and password; habits are stored per user in Postgres behind a small API (Hono on Vercel Functions).
 
 Live at <https://my-first-aiapp.vercel.app>. Full design document: [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -9,31 +9,39 @@ Live at <https://my-first-aiapp.vercel.app>. Full design document: [docs/DESIGN.
 
 ```bash
 npm install
-npm run dev      # http://127.0.0.1:5173 (localhost redirects there)
+npm run dev      # app http://127.0.0.1:5173 + API :8787 (local Postgres in .data/)
 npm test         # Vitest + Testing Library + axe accessibility checks
 npm run build    # type-check and production build
 npm run lint     # oxlint
+npm run db:migrate  # apply migrations to DATABASE_URL (production database; run deliberately)
 ```
 
 ## Structure
 
 ```
 src/
+  Root.tsx                sign-in gate: AuthPage when signed out, the app when signed in
   App.tsx                 screen shell: header, tabs, dialogs, celebrations
-  components/             UI (TodayView, WeeklyGrid, HabitCard, CheckButton, …)
-  components/ui/          Modal and ConfirmDialog primitives
-  hooks/                  useClock, useStableCallback, useSortableWiring
-  state/                  reducer, context + useHabits(), HabitsProvider (persistence)
-  lib/                    pure helpers: dates, stats, storage, palette, motivation
+  auth/                   apiClient (tokens, refresh, cross-tab), AuthProvider, inactivity rules
+  components/             UI (TodayView, WeeklyGrid, HabitCard, …); auth/ for sign-in screens
+  state/                  reducer, useHabits(), HabitsProvider (loads and saves via the API)
+  shared/schemas.ts       validation shared by client and server
+  lib/                    pure helpers: dates, stats, palette, appData, legacy device storage
+server/
+  app.ts, middleware.ts   Hono API, requireAuth, origin check, error handling
+  auth/                   Argon2id, JWTs, sessions, refresh rotation, rate limits, reset
+  repo/habits.ts          every query scoped to the signed-in user
+  db/                     Drizzle schema and migrations
+  test/                   API tests against an in-memory Postgres
+api/index.ts              Vercel Function entry
 ```
 
-## Data
+## Security model (short version)
 
-- One key, `habit-tracker:v1`, holding `{ version, habits, completions, settings }`.
-- Saved after every change (never on startup); unreadable data is copied to a
-  `…:backup:<timestamp>` key before the app starts fresh.
-- `localhost` and `127.0.0.1` are separate storage origins, so the app always uses
-  `127.0.0.1` and merges anything saved under `localhost` once.
+- 15-minute access tokens in memory; rotating refresh tokens in HttpOnly SameSite=Strict cookies.
+- 15-minute inactivity timeout enforced by the server, separate from token expiry; refreshing doesn't count as activity.
+- Every habit query is filtered by the user id from the verified session; other users' habits return 404.
+- See [docs/DESIGN.md §8](docs/DESIGN.md#8-security-solution-and-risks) for the full list and risk register.
 
 ## Accessibility
 

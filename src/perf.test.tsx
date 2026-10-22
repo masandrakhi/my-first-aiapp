@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import App from './App'
-import { HabitsProvider } from './state/HabitsProvider'
+import { act, fireEvent, screen, within } from '@testing-library/react'
+import { addHabit, renderSignedIn } from './test/renderApp'
 import * as HabitCardModule from './components/HabitCard'
 
 // Count how often each habit's card renders, while keeping the real component.
@@ -17,20 +16,18 @@ vi.mock('./components/HabitCard', async (importOriginal) => {
   }
 })
 
-function addHabit(name: string) {
-  fireEvent.click(screen.getAllByRole('button', { name: /add (your first )?habit/i })[0]!)
-  const dialog = screen.getByRole('dialog')
-  fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: name } })
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
-}
 
 describe('render performance', () => {
-  it('toggling one habit re-renders only that habit’s card', () => {
+  it('toggling one habit re-renders only that habit’s card', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 9, 21, 12)) // Wednesday, so Monday is a past day
     try {
-      render(<HabitsProvider><App /></HabitsProvider>)
-      for (const name of ['Read', 'Walk', 'Stretch']) addHabit(name)
+      await renderSignedIn()
+      for (const name of ['Read', 'Walk', 'Stretch']) await addHabit(name)
+      // Let follow-up work from adding habits (drag-and-drop re-measuring) finish before counting.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50))
+      })
 
       renders.clear()
       // Log a past day for "Walk" from its week strip (it stays in the to-do list).

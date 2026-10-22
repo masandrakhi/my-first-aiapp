@@ -8,6 +8,10 @@ import { completionSet } from './lib/stats'
 import { useHabits } from './state/habitsContext'
 import { useClock } from './hooks/useClock'
 import { useStableCallback } from './hooks/useStableCallback'
+import { useThemeClass } from './hooks/useThemeClass'
+import { useAuth, useUser } from './auth/authContext'
+import { ImportPrompt } from './components/auth/ImportPrompt'
+import { HabitsSkeleton, LoadError, SyncErrorToast } from './components/LoadStates'
 import { Header } from './components/Header'
 import { TodayView } from './components/TodayView'
 import { WeeklyGrid } from './components/WeeklyGrid'
@@ -24,20 +28,6 @@ const BURST_MS = 900
 const CELEBRATION_MS = 2600
 const TOP_PROGRESS_MS = 500
 
-function useThemeClass(theme: Theme) {
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = () => {
-      const dark = theme === 'dark' || (theme === 'system' && media.matches)
-      document.documentElement.classList.toggle('dark', dark)
-      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f0d0b' : '#faf7f2')
-    }
-    apply()
-    media.addEventListener('change', apply)
-    return () => media.removeEventListener('change', apply)
-  }, [theme])
-}
-
 /** A piece of state that resets to `null` `ms` after being set (for one-shot effects). */
 function useTransient<T>(ms: number): [T | null, (value: T) => void] {
   const [value, setValue] = useState<T | null>(null)
@@ -50,7 +40,9 @@ function useTransient<T>(ms: number): [T | null, (value: T) => void] {
 }
 
 export default function App() {
-  const { data, addHabit, updateHabit, deleteHabit, toggleCompletion, reorderHabits, setTheme, setCollapseDone } = useHabits()
+  const { data, status, syncError, dismissSyncError, reload, addHabit, updateHabit, deleteHabit, toggleCompletion, reorderHabits, setTheme, setCollapseDone } = useHabits()
+  const user = useUser()
+  const { signOut } = useAuth()
   const [tab, setTab] = useState<Tab>('today')
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [announcement, setAnnouncement] = useState('')
@@ -118,10 +110,18 @@ export default function App() {
         totalToday={habits.length}
         theme={data.settings.theme}
         onCycleTheme={() => setTheme(NEXT_THEME[data.settings.theme])}
+        user={user}
+        onSignOut={() => void signOut()}
       />
 
+      {status === 'ready' && <ImportPrompt onImported={reload} />}
+
       <main id="main" tabIndex={-1} key={tab} className="animate-fade-in outline-none">
-        {tab === 'today' ? (
+        {status === 'loading' ? (
+          <HabitsSkeleton />
+        ) : status === 'error' ? (
+          <LoadError onRetry={() => void reload()} />
+        ) : tab === 'today' ? (
           <TodayView
             habits={habits}
             completions={data.completions}
@@ -191,6 +191,8 @@ export default function App() {
           }}
         />
       )}
+
+      {syncError && <SyncErrorToast message={syncError} onDismiss={dismissSyncError} />}
 
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}

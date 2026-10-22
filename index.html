@@ -7,35 +7,8 @@
     <meta name="theme-color" content="#faf7f2" />
     <meta name="description" content="A simple, motivating daily habit tracker." />
     <title>Habits</title>
-    <script>
-      // Saved data lives per address, and "localhost" and "127.0.0.1" count as different sites.
-      // Always use one so habits never seem to vanish when the other address is opened.
-      // Habits saved under the old address ride along in the URL fragment (never sent to the
-      // server) and are merged in on arrival, once; the original copy is kept here as a backup.
-      if (location.hostname === 'localhost' || location.hostname === '[::1]') {
-        var target = new URL(location.href)
-        target.hostname = '127.0.0.1'
-        try {
-          var key = 'habit-tracker:v1'
-          var raw = localStorage.getItem(key)
-          var parsed = raw && JSON.parse(raw)
-          if (parsed && parsed.habits && parsed.habits.length && !localStorage.getItem(key + ':migrated')) {
-            target.hash = 'import=' + encodeURIComponent(raw)
-            localStorage.setItem(key + ':migrated', new Date().toISOString())
-          }
-        } catch (e) {}
-        location.replace(target.href)
-      }
-    </script>
-    <script>
-      // Apply the saved theme before first paint so there's no light/dark flash while loading.
-      try {
-        var t = (JSON.parse(localStorage.getItem('habit-tracker:v1') || '{}').settings || {}).theme
-        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
-          document.documentElement.classList.add('dark')
-        }
-      } catch (e) {}
-    </script>
+    <!-- Classic (blocking) script: redirects localhost in development and applies the theme before first paint. -->
+    <script src="/boot.js"></script>
     <style>
       /* Splash shown until React mounts (replaced by the app). */
       .splash { min-height: 100dvh; display: grid; place-items: center; background: #faf7f2; font-family: system-ui, sans-serif; }

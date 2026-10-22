@@ -12,10 +12,17 @@ export interface HabitActions {
   reorderHabits: (ids: readonly HabitId[]) => void
   setTheme: (theme: Theme) => void
   setCollapseDone: (collapsed: boolean) => void
+  /** Reloads everything from the server (after an import, or to recover from a failed save). */
+  reload: () => Promise<void>
+  dismissSyncError: () => void
 }
 
 export interface HabitsApi extends HabitActions {
   data: AppData
+  /** 'loading' until the first fetch from the server completes. */
+  status: 'loading' | 'ready' | 'error'
+  /** Shown when a change couldn't be saved; the data has been reloaded from the server. */
+  syncError: string | null
 }
 
 export const HabitsContext = createContext<HabitsApi | null>(null)

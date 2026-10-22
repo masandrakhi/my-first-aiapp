@@ -1,4 +1,4 @@
 export const APP_NAME = 'Habits'
 
-/** Name used in the greeting. Placeholder until the app lets you set your own. */
-export const USER_NAME = 'TestName'
+/** The colour theme is kept on the device too, so the sign-in page and first paint match the account's choice. */
+export const THEME_KEY = 'habits:theme'

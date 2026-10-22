@@ -1,64 +1,13 @@
-import type { AppData, Completions, Frequency, Habit } from '../types'
-import { migrateColor } from './palette'
+/**
+ * Legacy on-device storage. Since accounts were added, habits live on the server; this module only
+ * reads data saved on a device by earlier versions (for the one-time import) and cleans it up after.
+ */
+import type { AppData } from '../types'
+import { defaultData, mergeData, parseData } from './appData'
+
+export { defaultData, mergeData, parseData }
 
 export const STORAGE_KEY = 'habit-tracker:v1'
-
-export function defaultData(): AppData {
-  return { version: 1, habits: [], completions: {}, settings: { theme: 'system', collapseDone: true } }
-}
-
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
-
-function parseFrequency(v: unknown): Frequency {
-  if (isRecord(v) && v.type === 'weekly' && Array.isArray(v.days)) {
-    return { type: 'weekly', days: v.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) }
-  }
-  return { type: 'daily' }
-}
-
-/**
- * A habit with all required fields, or null when the essentials (id, name) are missing.
- * Optional-ish fields get sensible defaults so older or hand-edited data still loads.
- */
-function parseHabit(v: unknown, index: number): Habit | null {
-  if (!isRecord(v) || typeof v.id !== 'string' || typeof v.name !== 'string') return null
-  return {
-    id: v.id,
-    name: v.name,
-    emoji: typeof v.emoji === 'string' ? v.emoji : '✨',
-    color: migrateColor(typeof v.color === 'string' ? v.color : '#9333ea'),
-    frequency: parseFrequency(v.frequency),
-    createdAt: typeof v.createdAt === 'string' ? v.createdAt : new Date(0).toISOString(),
-    archived: v.archived === true,
-    order: typeof v.order === 'number' && Number.isFinite(v.order) ? v.order : index,
-  }
-}
-
-/** Returns a valid AppData or null if `raw` can't be trusted. */
-export function parseData(raw: unknown): AppData | null {
-  if (!isRecord(raw) || raw.version !== 1 || !Array.isArray(raw.habits) || !isRecord(raw.completions)) return null
-  const habits = raw.habits.map(parseHabit)
-  if (habits.some((h) => h === null)) return null
-
-  const completions: Completions = {}
-  for (const [id, days] of Object.entries(raw.completions)) {
-    if (Array.isArray(days)) {
-      completions[id] = [...new Set(days.filter((k): k is string => typeof k === 'string' && DATE_KEY.test(k)))].sort()
-    }
-  }
-  const settings = isRecord(raw.settings) ? raw.settings : {}
-  return {
-    version: 1,
-    habits: habits as Habit[],
-    completions,
-    settings: {
-      theme: settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'system',
-      collapseDone: settings.collapseDone !== false,
-    },
-  }
-}
-
 export const BACKUP_PREFIX = `${STORAGE_KEY}:backup:`
 
 export function loadData(): AppData {
@@ -75,52 +24,13 @@ export function loadData(): AppData {
   } catch {
     // fall through to backup
   }
-  // Never silently lose data: the app is about to save defaults over this key, so keep a copy first.
+  // Never silently lose data: keep a copy of anything unreadable before it could be overwritten.
   try {
     localStorage.setItem(BACKUP_PREFIX + Date.now(), raw)
   } catch {
     // storage full — nothing more we can do
   }
   return defaultData()
-}
-
-/**
- * Union of two data sets: every habit from both (existing ones win on an id clash), imported
- * habits appended after the current ones, and check-ins combined. Current settings are kept.
- */
-export function mergeData(current: AppData, incoming: AppData): AppData {
-  const known = new Set(current.habits.map((h) => h.id))
-  let nextOrder = Math.max(-1, ...current.habits.map((h) => h.order)) + 1
-  const added = [...incoming.habits]
-    .sort((a, b) => a.order - b.order)
-    .filter((h) => !known.has(h.id))
-    .map((h) => ({ ...h, order: nextOrder++ }))
-
-  const completions: Completions = { ...current.completions }
-  for (const [id, days] of Object.entries(incoming.completions)) {
-    completions[id] = [...new Set([...(completions[id] ?? []), ...days])].sort()
-  }
-  return { ...current, habits: [...current.habits, ...added], completions }
-}
-
-const IMPORT_PREFIX = '#import='
-
-/**
- * Picks up habits handed over in the URL fragment (see the redirect in index.html), merges them
- * into what's stored, and removes the fragment from the address bar. Returns true if anything was imported.
- */
-export function importFromUrl(): boolean {
-  if (!location.hash.startsWith(IMPORT_PREFIX)) return false
-  const raw = decodeURIComponent(location.hash.slice(IMPORT_PREFIX.length))
-  history.replaceState(null, '', location.pathname + location.search)
-  try {
-    const incoming = parseData(JSON.parse(raw))
-    if (!incoming) return false
-    saveData(mergeData(loadData(), incoming))
-    return true
-  } catch {
-    return false
-  }
 }
 
 /** Writes `data`; returns the serialized string so callers can skip identical rewrites. */
@@ -132,4 +42,34 @@ export function saveData(data: AppData): string {
     // Storage full or blocked (private mode) — keep running in memory.
   }
   return json
+}
+
+/** Removes this device's legacy habit data once it has been imported into an account. */
+export function clearLegacyData(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // storage blocked — nothing to clear
+  }
+}
+
+const IMPORT_PREFIX = '#import='
+
+/**
+ * Development only: picks up habits handed over from localhost in the URL fragment (see public/boot.js),
+ * merges them into this device's legacy data, and removes the fragment. Ignored on any other host,
+ * so a crafted link can't inject data into a real user's browser.
+ */
+export function importFromUrl(): boolean {
+  if (location.hostname !== '127.0.0.1' || !location.hash.startsWith(IMPORT_PREFIX)) return false
+  const raw = decodeURIComponent(location.hash.slice(IMPORT_PREFIX.length))
+  history.replaceState(null, '', location.pathname + location.search)
+  try {
+    const incoming = parseData(JSON.parse(raw))
+    if (!incoming) return false
+    saveData(mergeData(loadData(), incoming))
+    return true
+  } catch {
+    return false
+  }
 }

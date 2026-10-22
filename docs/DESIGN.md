@@ -1,415 +1,261 @@
 # Habits App — Design Document
 
-Last updated: 2026-10-21 · Editable version: [Claude Doc](https://claude.ai/artifact/MscpYLyawrWsfPrFEN1jEf) · Live app: <https://my-first-aiapp.vercel.app>
+Last updated: 2026-10-21 (v2: accounts and server-side data) · Earlier version (v1, device-only): [Claude Doc](https://claude.ai/artifact/MscpYLyawrWsfPrFEN1jEf) · Live app: <https://my-first-aiapp.vercel.app> (still v1 until v2 is deployed)
 
 ## 1. Use cases
 
-The app serves one primary actor, the **User** tracking their own habits on a phone or desktop browser, and one secondary actor, the **Maintainer** who builds and deploys it. All 17 use cases below are implemented and tested in the current release.
+Actors: the **User**, who tracks their own habits from any browser after signing in, and the **Maintainer**, who builds and deploys the app. Every habit use case acts only on the signed-in user's data.
 
 | ID | Use case | Actor | Main flow | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| UC-01 | Add a habit | User | Tap + (or "Add your first habit") → enter name → pick emoji and color → Add habit | Name required, trimmed, 1–40 characters; Add disabled until valid; emoji defaults to ✨; new habit appears at the end of Today's list |
-| UC-02 | Edit a habit | User | ⋯ menu on a card → Edit → change name, emoji or color → Save changes | Same validation as UC-01; history and streak are kept |
-| UC-03 | Delete a habit | User | ⋯ menu → Delete → confirm in dialog | Confirmation required; habit and all its check-ins are removed |
-| UC-04 | Check off a habit for today | User | Tap the circle on a habit card | Circle fills with the habit color, checkmark draws, haptic buzz, ripple; card turns green with a ✓ badge; header ring updates (e.g. 2/3) |
-| UC-05 | Undo a check-off | User | Tap a checked circle again | Today's check-in is removed and the card returns to the to-do list immediately |
-| UC-06 | See current streak | User | View any habit card | Shows 🔥 N days; counts back from today, or from yesterday if today isn't done yet; a missed day resets to "Start a streak" |
-| UC-07 | Log a missed day this week | User | Tap a past day in the card's Mon–Sun strip | Past days toggle; future days are disabled; streak and weekly stats update at once |
-| UC-08 | Review the week | User | Open the Week tab; use ‹ › to page weeks | Summary ring (% of possible check-ins), check-ins and perfect-day counts, a daily message, and a circle grid per habit; past cells toggle; cannot page past the current week |
-| UC-09 | Keep finished habits out of the way | User | Check off a habit; tap the "N Done ✓" row to fold or unfold | A checked card stays ~0.9 s for its animation, then moves to Done; fold state is remembered; "All done for today!" banner when nothing is left |
-| UC-10 | Reorder habits | User | Drag a card's grip handle (mouse or touch), or Tab to it and use Space + arrow keys | New order is saved and used in both tabs; page scrolling is unaffected outside the handle |
-| UC-11 | Feel rewarded | User | Complete the first habit of the day; complete the last one | Mini confetti burst on the first check-in; full-screen confetti + "Perfect day! 🎉" on the last; skipped under reduced motion |
-| UC-12 | Switch theme | User | Tap the theme icon in the header | Cycles system → light → dark; choice is saved and applied before first paint on the next visit |
-| UC-13 | Keep data between visits | User | Close the browser and return later | All habits, check-ins, order, theme and fold state are restored; nothing is written just by opening the app |
-| UC-14 | Use it with assistive tech | User | Navigate by keyboard or screen reader | Skip link, visible focus ring, labelled controls, live announcements of each check-in; WCAG 2.2 AA contrast |
-| UC-15 | Use it on a phone | User | Open the live URL; optionally Add to Home Screen | Layout fits 375 px with no horizontal scroll; tap targets ≥ 24 px; keeps working without a connection while the page stays open |
-| UC-16 | Recover habits from an old address | User | Open localhost:5173 once (development only) | Habits saved under localhost are carried to 127.0.0.1 and merged once; no duplicates; deleted habits are not re-imported |
-| UC-17 | Release a new version | Maintainer | Build and test locally → user approves → `npx.cmd vercel deploy --prod` | Deploys only after explicit user approval; free Hobby plan only; live URL updates in place |
-
-- [ ] Open question: should UC-15 add a proper home-screen icon and web app manifest?
+| UC-01 | Create an account | User | "Create an account" → optional first name, email, password → Create account | Email unique (case-insensitive); password 12–128 characters, not common, not containing the email name; signed in on success |
+| UC-02 | Sign in | User | Email + password → Sign in | Server verifies the Argon2id hash; wrong email or password gives one generic message; 5 failures per email or 20 attempts per IP in 15 minutes → "Too many attempts" |
+| UC-03 | Stay signed in while active | User | Use the app normally | 15-minute access tokens refresh silently; reloading the page restores the session from the HttpOnly refresh cookie |
+| UC-04 | Inactivity sign-out | User | Stop using the app | "Still there?" warning at 13 minutes with a countdown; "Stay signed in" keeps the session; after 15 minutes without activity the server rejects the session and the app shows "signed out after 15 minutes of inactivity" |
+| UC-05 | Sign out | User | Avatar menu → Sign out | Server revokes the session and refresh token; every open tab returns to the sign-in page |
+| UC-06 | Reset a forgotten password | User | Forgot password? → email → link in email → new password | Same answer whether or not the account exists; link valid 30 minutes, single use; afterwards every session is signed out and a "password changed" email is sent |
+| UC-07 | Import habits from this device | User | After first sign-in, "Import N habits from this device?" → Import | Imported once into the signed-in account with history; the device copy is deleted afterwards |
+| UC-08 | Add a habit | User | Tap + → name, emoji, colour → Add habit | Name required, trimmed, 1–40 characters; saved on the server under the user's id |
+| UC-09 | Edit or delete a habit | User | ⋯ menu → Edit / Delete (confirm) | Only the owner's habit changes; delete removes its history |
+| UC-10 | Check off a habit for today | User | Tap the circle | Fills, pops, buzzes, ripples; card turns green; saved immediately; on a failed save the app reloads from the server and says so |
+| UC-11 | Undo a check-off | User | Tap a checked circle | Check-in removed; card returns to the to-do list |
+| UC-12 | See current streak | User | View a habit card | 🔥 N days counted back from today (or yesterday if today isn't done) |
+| UC-13 | Log a missed day this week | User | Tap a past day in the card's Mon–Sun strip | Past days toggle; future days disabled; server rejects dates more than a day ahead |
+| UC-14 | Review the week | User | Week tab; ‹ › to page weeks | Completion ring, check-ins, perfect days, circle grid per habit |
+| UC-15 | Keep finished habits out of the way | User | Check off; tap "N Done ✓" to fold/unfold | Card sinks to Done after ~0.9 s; fold state saved to the account |
+| UC-16 | Reorder habits | User | Drag the grip (mouse, touch) or Space + arrows | New order saved; server accepts only the user's own complete set of habits |
+| UC-17 | Feel rewarded | User | First and last check-in of the day | Mini burst, then full confetti + "Perfect day! 🎉"; skipped under reduced motion |
+| UC-18 | Switch theme | User | Theme icon | system → light → dark; saved to the account and applied before first paint on this device |
+| UC-19 | Use it on any device | User | Sign in on phone or desktop | Same habits everywhere; nothing about habits is stored in the browser |
+| UC-20 | Use it with assistive tech | User | Keyboard or screen reader | WCAG 2.2 AA: labels, focus ring, skip link, live announcements, accessible sign-in form |
+| UC-21 | Release a new version | Maintainer | Build and test → owner approves → deploy | Deploys only after explicit approval; free plans only; database migrations run deliberately |
 
 ## 2. Introduction and overview
 
-Habits is a single-page web app for building daily routines: add a habit with a name and emoji, check it off each day, and watch a streak grow. It is live at <https://my-first-aiapp.vercel.app> and runs entirely in the browser, with no server, account or sign-in.
+Habits is a motivating daily habit tracker: add habits with a name and emoji, check them off each day, and watch streaks grow. Version 2 adds **accounts**: users sign in with email and password, and their habits are stored on the server, private to them.
 
-**Product feel.** Clean, motivating and satisfying, in the spirit of Streaks and Habitify: minimal screens, one tap per check-in, and small rewards (animations, confetti, streak flames) for showing up.
+**Product feel.** Clean, motivating and satisfying, in the spirit of Streaks and Habitify.
 
 **Goals**
 
-- One-tap daily check-in with immediate, delightful feedback
-- Clear motivation: current streak per habit and a weekly visual summary
-- Data that survives closing the browser, with no account
-- Usable on a phone, by keyboard and with a screen reader (WCAG 2.2 AA)
-- Free hosting on Vercel's Hobby plan
+- One-tap daily check-in with delightful feedback
+- Secure accounts: server-verified passwords, short-lived tokens, 15-minute inactivity timeout, rotating refresh tokens
+- Strict per-user data isolation, enforced on the server for every endpoint
+- The same habits on every device; nothing about habits stored in the browser
+- Accessible (WCAG 2.2 AA), mobile-first, free hosting
 
-**Non-goals (current release)**
+**Non-goals (this release)**
 
-- Accounts, cloud sync or sharing data between devices
-- Weekday-only schedules in the UI (the data model supports them)
-- Statistics beyond the current week (longest streak, heatmaps)
-- Export/import to a file, reminders and notifications
+- Social sign-in, two-factor authentication, email verification
+- Sharing habits between users; admin tools
+- Weekday-only schedules in the UI, long-range statistics, reminders
 
 **Current status**
 
 | Item | State |
 | --- | --- |
-| Live URL | <https://my-first-aiapp.vercel.app> (Vercel project my-first-aiapp, Hobby plan) |
-| Source | Local git repo, branch master, no remote |
-| Tests | 56 automated tests (unit, component, accessibility, render performance) |
-| Build | 1 HTML, 1 JS and 1 CSS file, about 108 KB gzipped |
-| Users | Single user per browser; data is per device |
+| Live URL | <https://my-first-aiapp.vercel.app> serves v1 (device-only) until v2 is deployed |
+| v2 | Complete locally; not deployed (needs a database and environment variables, with the owner's approval) |
+| Tests | 101 automated tests: 31 server (auth, sessions, isolation) + 70 UI |
+| Build | About 129 KB gzipped JavaScript |
 
 ## 3. System architecture
 
-Habits is a static single-page app: Vercel builds and serves three files, and everything else (state, logic and storage) runs in the user's browser. There is no backend, database or API.
+The browser app and the API share one origin. The API is a Vercel Function; data lives in Postgres.
 
 ```mermaid
 flowchart TB
-  dev["Developer PC<br/>git repo, build, tests, lint<br/>preview checks the production build<br/>deploys only after owner approval"]
-  vercel["Vercel (free Hobby plan)<br/>builds dist/ on each deploy<br/>serves it over HTTPS from a CDN<br/>my-first-aiapp.vercel.app"]
-  dev -- "deploy --prod" --> vercel
   subgraph browser["Browser (phone or desktop)"]
-    boot["Bootstrap: index.html + main.tsx<br/>localhost redirect, theme before first paint,<br/>splash, import hand-over, mount React"]
-    ui["UI components<br/>App shell, Header, TodayView,<br/>WeeklyGrid, HabitCard, dialogs"]
-    prov["HabitsProvider<br/>habitsReducer (pure), stable actions,<br/>saves after real changes, syncs tabs"]
-    store[("localStorage<br/>habit-tracker:v1, backup keys,<br/>migrated marker, one store per origin")]
-    lib["lib: pure helpers (no React)<br/>dates, stats, storage, palette, motivation"]
-    boot --> prov
-    ui -- actions --> prov
-    prov -- data --> ui
-    prov -- save --> store
-    store -- "load / storage event" --> prov
-    ui --> lib
-    prov --> lib
+    ui["React app<br/>sign-in page, Today, Week"]
+    auth["AuthProvider + apiClient<br/>access token in memory only<br/>single-flight refresh across tabs"]
+    ui --> auth
   end
-  vercel -- "HTTPS: HTML, JS, CSS (about 108 KB)" --> boot
-  style store stroke-width:3px
+  subgraph vercel["Vercel (same origin, HTTPS)"]
+    static["Static files<br/>HTML, JS, CSS, boot.js"]
+    api["/api — Vercel Function (Hono)<br/>originCheck, rate limits,<br/>requireAuth (JWT + session row)"]
+  end
+  db[("Postgres (Neon)<br/>users, sessions, refresh_tokens,<br/>password_resets, habits, completions,<br/>user_settings, rate_limits, imports")]
+  mail["Email provider<br/>(reset links)"]
+  browser -- "GET pages" --> static
+  auth -- "Bearer access token<br/>+ HttpOnly refresh cookie" --> api
+  api --> db
+  api --> mail
+  style api stroke-width:3px
 ```
-
-Data flows one way: UI components call actions on HabitsProvider, which updates state through a pure reducer and saves to localStorage after each real change; pure helpers in `lib/` do the date, streak, validation and colour work.
 
 **Technology stack**
 
 | Layer | Technology | Notes |
 | --- | --- | --- |
-| Language | TypeScript 6 (strict) | strict, noUncheckedIndexedAccess, no casts in app code |
-| UI | React 19 | Function components and hooks; StrictMode |
-| State | useReducer + React Context | One store; stable action functions |
-| Styling | Tailwind CSS 4 + CSS keyframes | Warm design tokens; dark mode via a class |
-| Drag and drop | dnd-kit | Pointer, touch and keyboard sensors |
-| Persistence | Browser localStorage | Versioned JSON, validated on load |
-| Build | Vite 8 | Output: 1 HTML, 1 JS, 1 CSS file |
-| Testing | Vitest, Testing Library, jsdom, axe-core | 56 tests incl. accessibility and render counts |
-| Hosting | Vercel Hobby (static CDN) | Manual deploys after approval |
+| UI | React 19, TypeScript (strict), Tailwind CSS 4 | Unchanged look and features from v1 |
+| API | Hono on Vercel Functions (Node.js runtime) | One function serves all `/api/*` routes |
+| Database | Postgres via Drizzle ORM | Neon in production; PGlite (in-process Postgres) for local dev and tests |
+| Passwords | Argon2id (`@node-rs/argon2`) | m = 19 MiB, t = 2, p = 1 |
+| Tokens | JWT HS256 (`jose`) + opaque refresh tokens | Signing keys rotate via `kid` |
+| Validation | zod schemas shared by client and server | `src/shared/schemas.ts` |
+| Email | Resend HTTP API (production), file outbox (development) | `server/mail/mailer.ts` |
+| Tests | Vitest; server tests against real PGlite; UI tests with an in-memory fake API | |
 
-**Runtime topology**
-
-- Static files only: once loaded, the page keeps working without a connection while it stays open.
-- Each browser origin has its own data; the app always uses one address (127.0.0.1 locally, the vercel.app domain live).
-- Multiple tabs on the same origin stay in sync through the storage event.
+**Local development:** `npm run dev` starts Vite on 127.0.0.1:5173 and the API on 127.0.0.1:8787; Vite proxies `/api`, so cookies and origins behave as in production. Data is in `.data/pglite`, emails in `.data/outbox`.
 
 ## 4. Data design
 
-All state is one JSON document, AppData, stored under a single localStorage key and saved after every change. Types live in `src/types.ts`; loading, validation and saving in `src/lib/storage.ts`.
+Every row of user data carries `user_id`. Completions also have a composite foreign key `(habit_id, user_id) → habits(id, user_id)`, so the database itself refuses a check-in that points at another user's habit.
 
-**AppData (root)**
-
-| Field | Type | Meaning |
+| Table | Key columns | Purpose |
 | --- | --- | --- |
-| version | `1` | Schema version; anything else is rejected and backed up |
-| habits | `Habit[]` | All habits, displayed by order |
-| completions | `Record<HabitId, DateKey[]>` | Check-in dates per habit, unique and sorted ascending |
-| settings.theme | `"system" \| "light" \| "dark"` | Colour theme, default "system" |
-| settings.collapseDone | `boolean` | Whether the Done section is folded, default true |
+| users | id, email (unique, lowercased), password_hash, name, password_changed_at | Accounts; never plaintext passwords |
+| sessions | id, user_id, created_at, **last_activity_at**, expires_at (7 days), revoked_at, revoke_reason | One per sign-in; drives the inactivity timeout; the "family" for refresh rotation |
+| refresh_tokens | id, session_id, token_hash (SHA-256), expires_at, used_at, replaced_by, revoked_at | Rotation and reuse detection |
+| password_resets | id, user_id, token_hash, expires_at (30 min), used_at | Single-use reset links |
+| habits | id (server-generated), **user_id**, name, emoji, color, frequency, archived, sort_order | Habits, unique (id, user_id) |
+| completions | **user_id**, habit_id, date, PK (habit_id, date) | Check-ins |
+| user_settings | user_id, theme, collapse_done | Per-user preferences |
+| rate_limits | key (HMAC of IP or email), window_start, count | Brute-force protection shared by all instances |
+| imports | user_id, device_import_id | Makes the one-time device import idempotent |
 
-**Habit**
+**Conventions.** Dates are local `YYYY-MM-DD`; weeks start Monday; streaks count consecutive scheduled days. All expiry decisions use the injected server clock.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| id | `string` | `crypto.randomUUID()` at creation |
-| name | `string` | 1–40 characters, trimmed |
-| emoji | `string` | One of 40 curated emoji, default ✨ |
-| color | hex `string` | One of 8 palette colours (Tailwind 600 shades, contrast-checked) |
-| frequency | `{ type: "daily" } \| { type: "weekly", days: number[] }` | Schedule (days 0–6); the UI creates daily habits only |
-| createdAt | ISO timestamp | Creation time |
-| archived | `boolean` | Hidden when true; reserved, always false today |
-| order | `number` | Display position, renumbered 0..n-1 on reorder |
+**Device storage (browser).** Only `habits:theme` (for first paint) and `habits:device-id` (import idempotency). Legacy `habit-tracker:v1` data from v1 is read once for the import prompt and deleted after a successful import.
 
-**Keys and conventions**
-
-- DateKey = `"YYYY-MM-DD"` in the user's local time zone, never UTC, so days don't shift at midnight.
-- Weeks run Monday to Sunday.
-- Streak = consecutive scheduled days completed, counted back from today; if today isn't done yet, counting starts from yesterday.
-
-**Storage keys (per browser origin)**
-
-| Key | Written when | Content |
-| --- | --- | --- |
-| `habit-tracker:v1` | After every real change, never on startup | The AppData JSON |
-| `habit-tracker:v1:backup:<timestamp>` | Stored data can't be read | The unreadable raw text, kept before defaults are used |
-| `habit-tracker:v1:migrated` | Old localhost data handed over | Timestamp; stops a second import |
-
-**Integrity rules**
-
-1. Validate on load: `parseData` checks every field; id and name are required, other fields get defaults, invalid or duplicate dates are dropped.
-2. Migrate on load: legacy low-contrast colours (500 shades) map to their 600 replacements.
-3. Never lose data silently: unreadable data is copied to a backup key before the app starts fresh.
-4. Never write on open: the loaded data is not saved back, so a faulty load cannot overwrite storage.
-5. Skip identical writes: a save whose JSON equals the last written value is skipped, which also stops two tabs echoing each other.
-6. Cross-tab sync: the storage event replaces in-memory state with the other tab's validated data.
-
-**Address migration.** localhost and 127.0.0.1 are different storage origins. `index.html` redirects localhost to 127.0.0.1 and passes any habits saved there in the URL fragment (`#import=…`, never sent to a server). On arrival, `mergeData` unions habits by id and check-ins by date, then the fragment is removed from the address bar. The live site has one address, so this only affects local development.
+**Migrations.** Drizzle generates SQL into `server/db/migrations`; `npm run db:migrate` applies them to the database in `DATABASE_URL`, only when run deliberately.
 
 ## 5. Interface design
 
-The app has no network API: its interfaces are the internal module contracts below and a few browser APIs. UI components change data only through the `useHabits()` actions, which dispatch reducer actions; nothing else writes storage.
+**HTTP API.** JSON only. Errors: `{ "error": { "code", "message", "fields"? } }`. State-changing requests must come from the app's origin (else 403).
 
-**State API: `useHabits()` (`src/state/habitsContext.ts`)**
+| Method & path | Auth | Purpose | Main responses |
+| --- | --- | --- | --- |
+| POST /api/auth/register | — | Create account and sign in | 201 · 400 · 409 · 429 |
+| POST /api/auth/login | — | Sign in | 200 · 401 `invalid_credentials` · 429 |
+| POST /api/auth/refresh | cookie | Rotate refresh token, new access token | 200 · 401 `session_expired` / `invalid_refresh` |
+| POST /api/auth/logout | cookie/Bearer | Revoke session | 204 |
+| POST /api/auth/password/forgot | — | Email a reset link | always 202 |
+| POST /api/auth/password/reset | — | Set new password, revoke all sessions | 204 · 400 `invalid_reset_link` |
+| POST /api/session/keepalive | Bearer | "Stay signed in" (counts as activity) | 204 |
+| GET /api/me · PATCH /api/me/settings | Bearer | Profile and settings | 200 |
+| GET · POST /api/habits | Bearer | List all (with completions, settings) · create | 200 · 201 |
+| GET · PATCH · DELETE /api/habits/:id | Bearer | One habit | 200/204 · 404 if not the caller's |
+| PUT · DELETE /api/habits/:id/completions/:date | Bearer | Check in / undo | 204 · 400 · 404 |
+| PUT /api/habits/order | Bearer | Reorder (must list exactly the caller's habits) | 204 · 400 |
+| POST /api/import | Bearer | One-time import of device data | 200 |
 
-| Function | Parameters | Effect |
-| --- | --- | --- |
-| data | (value) | Current AppData, read-only |
-| addHabit | `draft: { name, emoji, color }` | Creates a daily habit, appended after the last one |
-| updateHabit | `id, changes: Partial<draft>` | Renames or restyles a habit |
-| deleteHabit | `id` | Removes the habit and its check-ins |
-| toggleCompletion | `id, date: DateKey` | Adds or removes one check-in |
-| reorderHabits | `ids: HabitId[]` (full list, in order) | Renumbers order 0..n-1 |
-| setTheme | `"system" \| "light" \| "dark"` | Changes the theme |
-| setCollapseDone | `boolean` | Folds or unfolds the Done section |
+Status codes: **401** missing, invalid or expired authentication (`token_expired` triggers one silent refresh); **404** for any habit that isn't the caller's (indistinguishable from a missing one); **403** failed origin check; **429** rate limited with `Retry-After`.
 
-All action functions are created once and never change identity, so they are safe to pass to memoized components.
-
-**Reducer actions (`src/state/habitsReducer.ts`)**
-
-`ADD_HABIT`, `UPDATE_HABIT`, `DELETE_HABIT`, `TOGGLE_COMPLETION`, `REORDER`, `SET_THEME`, `SET_COLLAPSE_DONE` and `REPLACE` (cross-tab sync). The reducer is pure; random ids and timestamps are created before dispatch. An exhaustive switch makes an unhandled action a compile error.
-
-**Library functions (`src/lib`)**
-
-| Module | Functions | Purpose |
-| --- | --- | --- |
-| storage.ts | loadData, saveData, parseData, mergeData, importFromUrl | Read, validate, write, merge and hand-over of AppData |
-| stats.ts | currentStreak, completionSet | Streak calculation; cached Set of check-in dates per habit |
-| dates.ts | toDateKey, addDays, startOfWeek, weekDays, format* | Local-time date keys and display formats |
-| palette.ts | colorAt, contrastRatio, readableTextOn, migrateColor | Colour palette and WCAG contrast helpers |
-| motivation.ts | messageForDay | One message per day from a list of 30 |
-
-**Browser interfaces used**
-
-| Interface | Used for |
-| --- | --- |
-| localStorage + storage event | Persistence and cross-tab sync |
-| navigator.storage.persist() | Asks the browser not to evict data (it may decline) |
-| matchMedia (prefers-color-scheme, prefers-reduced-motion) | System theme and reduced motion |
-| navigator.vibrate() | Haptic buzz on supported phones |
-| history.replaceState, location.hash | Removing the `#import=` fragment after a hand-over |
-| ARIA live region | Screen-reader announcements of check-ins |
-
-**Build and deploy interface**
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Dev server at http://127.0.0.1:5173 |
-| `npm test` / `npm run build` / `npm run lint` | Tests, type-check + production build, linting |
-| `npm run preview` | Serves the production build at http://127.0.0.1:4173 |
-| `npx.cmd vercel deploy --prod` | Publishes to Vercel, only after the user approves |
+**Client interfaces.** `useAuth()` (state, signIn, register, requestReset, resetPassword, signOut, keepAlive, idleMs) and `useHabits()` (data, status, syncError, and the same habit actions as v1, now saved to the API in order with optimistic updates).
 
 ## 6. Component design
 
-The UI is a tree of small function components under one App shell; each habit card is a memoized HabitRow, so checking off one habit re-renders only that card (verified by a render-count test).
-
 ```mermaid
 flowchart TB
-  provider["HabitsProvider<br/>state, persistence, tab sync"] --> app["App (shell)<br/>tabs, dialogs, announcements, celebrations"]
-  app --> header["Header<br/>greeting, date, message, theme toggle<br/>ProgressRing"]
-  app --> today["TodayView<br/>to-do and Done lists"]
-  app --> week["WeeklyGrid<br/>week switcher, WeekSummary, Dot circles"]
-  app --> overlays["Dialogs and effects<br/>AddHabitModal + EmojiPicker<br/>ConfirmDialog, Modal<br/>Celebration, TopProgress, TabButton"]
-  today --> list["SortableHabitList<br/>dnd-kit, stable ids"]
-  list --> row["HabitRow (memo)<br/>streak memo, drag wiring"]
-  row --> card["HabitCard<br/>menu, done tint, flame"]
-  card --> check["CheckButton + MiniBurst"]
-  card --> strip["WeekStrip"]
+  root["Root"] --> authp["AuthProvider<br/>session state, apiClient"]
+  authp --> gate["Gate"]
+  gate -- signed out --> page["AuthPage<br/>sign in, register, forgot, reset"]
+  gate -- signed in --> hp["HabitsProvider (keyed by user)<br/>loads from API, ordered saves"]
+  hp --> app["App<br/>Header + AccountMenu, ImportPrompt,<br/>TodayView, WeeklyGrid, dialogs"]
+  hp --> idle["InactivityDialog"]
+  app --> row["HabitRow (memo) → HabitCard<br/>CheckButton, WeekStrip"]
   style row stroke-width:3px
 ```
 
-HabitsProvider owns all data; App passes it down as props and receives stable callbacks back, so memoization holds across renders.
-
-**Components**
-
-| Component | File | Responsibility |
-| --- | --- | --- |
-| HabitsProvider | state/HabitsProvider.tsx | Holds AppData in a reducer; saves after changes; syncs tabs; exposes useHabits() |
-| App | App.tsx | Tabs, dialogs, screen-reader announcements, burst and celebration timing, theme class |
-| Header + ProgressRing | components/Header.tsx, ProgressRing.tsx | App bar, date, greeting with name, daily message, today's progress ring |
-| TodayView | components/TodayView.tsx | Splits habits into to-do and Done (with the 0.9 s linger); empty and all-done states |
-| SortableHabitList | components/SortableHabitList.tsx | dnd-kit context with constant sensors and modifiers; one per list |
-| HabitRow | components/TodayView.tsx | Memoized row: drag wiring, done state and streak (memoized) |
-| HabitCard | components/HabitCard.tsx | Card layout, ⋯ menu, done tint and badge, flame pulse, card bounce |
-| CheckButton + MiniBurst | components/CheckButton.tsx | Check circle with press, pop, haptic buzz, ripple and first-check confetti |
-| WeekStrip | components/WeekStrip.tsx | Mon–Sun day buttons on each card for backfilling |
-| WeeklyGrid + WeekSummary + Dot | components/WeeklyGrid.tsx | Week paging, summary ring and stats, animated circle grid |
-| AddHabitModal + EmojiPicker | components/AddHabitModal.tsx, EmojiPicker.tsx | Create/edit form with validation and keyboard-navigable pickers |
-| Modal, ConfirmDialog | components/ui/ | Accessible dialog: focus trap, Esc to close, focus return |
-| Celebration, CelebrationToast, TopProgress | components/ | Confetti, "Perfect day" toast, tab-switch progress bar |
-
-**Hooks**
-
-| Hook | Purpose |
+| Component / module | Responsibility |
 | --- | --- |
-| useHabits | Read data and call actions from any component |
-| useClock | Today's date and hour, refreshed each minute and on tab focus |
-| useStableCallback | Fixed-identity callback that always runs the latest code |
-| useSortableWiring | Turns dnd-kit's useSortable into the card's ref, style and handle props |
-| useTransient (in App) | State that resets itself after a delay (burst, celebration, progress bar) |
+| `auth/apiClient.ts` | Access token in memory; Bearer requests; one refresh then retry on `token_expired`; single-flight refresh via Web Locks; cross-tab session/sign-out via BroadcastChannel; tracks activity |
+| `auth/AuthProvider.tsx` | Restores the session on load, exposes sign-in/out/register/reset |
+| `components/auth/AuthPage.tsx` | Accessible forms with client-side checks mirroring the server, reset-link handling |
+| `components/auth/InactivityDialog.tsx` | 13-minute warning, 15-minute sign-out; only a click counts as activity |
+| `components/auth/ImportPrompt.tsx` | One-time import of v1 device data |
+| `state/HabitsProvider.tsx` | Server is the source of truth; optimistic updates; on a failed save, reload and show a toast |
+| `server/middleware.ts` | `requireAuth` (JWT + live session + inactivity), `originCheck`, error mapping, request logging |
+| `server/repo/habits.ts` | All data access; every function requires an `AuthedUserId` and filters by it |
+| `server/auth/*` | Passwords, tokens, sessions, refresh rotation, rate limits, reset |
 
-**Design rules**
-
-- Pure logic stays in `lib/` and is unit-tested without React.
-- Components receive data as props; only App calls `useHabits()`.
-- Objects passed to dnd-kit (sensor options, modifiers, id lists) keep their identity unless their contents change.
+Unchanged from v1: memoized habit rows (toggling re-renders one card), shared date/streak helpers, the animation and accessibility components.
 
 ## 7. User interface design
 
-The interface is one centred, mobile-first column (max 576 px) with two tabs, Today and Week, and a floating + button between them. Everything else is a dialog or an in-place animation.
+The sign-in page uses the app's visual language: cream background, rounded card, the Habits brand mark, plum accent button, 375 px-first layout.
 
-**Screens and regions**
-
-| Screen / region | Contents |
+| Screen | Contents |
 | --- | --- |
-| Header (both tabs) | "Habits" app bar with theme toggle; date in small capitals; "Good afternoon, TestName 👋"; daily motivational line; progress ring (e.g. 2/3) |
-| Today: empty state | 🌱 "Small steps, every day" and an "Add your first habit" button |
-| Today: to-do list | Habit cards: grip handle, emoji tile, name, 🔥 streak, ⋯ menu, check circle, Mon–Sun strip |
-| Today: Done section | "N Done ✓" row that folds or unfolds the finished cards (green tint, ✓ badge) |
-| Today: all done | Green "All done for today!" banner |
-| Week | Week switcher (‹ This week ›); summary card with % ring, check-ins, perfect days and a message; grid of circles per habit with an N/7 tally |
-| New / Edit habit dialog | Bottom sheet on phones, centred on larger screens: Name with 0/40 counter, 8×5 emoji grid, 8 colour swatches, submit button |
-| Delete dialog | "Delete “name”?" with Cancel and Delete |
-| Bottom bar | Today tab, + button, Week tab |
+| Sign in | Email, password (show/hide), Sign in, "Forgot password?", "Create an account"; notice banner when signed out for a reason |
+| Create account | First name (optional), email, new password with guidance, Create account |
+| Forgot / reset | Email → generic confirmation; reset link → new password → "Password changed" notice |
+| App header | Brand, theme toggle, avatar menu (name, email, Sign out), greeting with the user's name |
+| Import card | "Import N habits from this device?" with Import / Not now |
+| Inactivity dialog | "Still there?" with a live countdown, Stay signed in / Sign out |
+| Loading / errors | Skeleton cards while loading; retry card if loading fails; toast when a save fails |
 
-**Visual language**
-
-- Warm palette: cream background (#faf7f2), warm stone greys, plum-purple accent; dark mode uses a warm near-black (#0f0d0b).
-- Each habit has one accent colour from 8 options; done states use green.
-- Rounded cards (24 px corners), soft shadows, generous whitespace, system/Inter font.
-- Done is never shown by colour alone: a check mark is always drawn too.
-
-**Motion (all skipped when the OS asks for reduced motion)**
-
-| Moment | Animation |
-| --- | --- |
-| App start | Pulsing logo splash until the app mounts |
-| Check-off | Button press-in, pop, side-to-side haptic buzz, ripple, checkmark draw, card bounce |
-| First check-in of the day | Mini confetti burst from the button |
-| Last check-in of the day | Full-screen confetti and a "Perfect day! 🎉" toast |
-| Streak grows | Flame pulse |
-| Tab switch | Content fade and a thin top progress bar |
-| Week view load | Summary slides up, ring sweeps, rows fade in, circles pop in one by one |
-
-**Responsive and accessible behaviour**
-
-- Works from 375 px wide with no horizontal scroll; tap targets at least 24 px, main buttons 48 px.
-- Text contrast at least 4.5:1 and icons/borders at least 3:1 in both themes (checked by axe and unit tests).
-- Full keyboard use: skip link, purple focus ring, arrow keys in the emoji and colour pickers, Esc closes dialogs and menus, keyboard drag-and-drop.
-- Screen readers hear each check-in ("Read done today. 2 of 3 done today.") and get labels for every icon button and day circle.
+Today, Week, dialogs, motion and accessibility behaviour are unchanged from v1 (see the Claude Doc).
 
 ## 8. Security solution and risks
 
-The attack surface is small: a static site with no backend, no accounts, no cookies and no outgoing data. Habit data never leaves the user's browser, so the main risks are local data loss, a shared device, and the integrity of the code being served.
+**Measures**
 
-**Security measures in place**
+- Passwords: Argon2id with per-hash salt; NIST-style policy; constant-time-ish login (dummy hash for unknown emails); generic error messages.
+- Tokens: 15-minute HS256 access tokens kept only in memory; opaque 256-bit refresh tokens stored as SHA-256 hashes, in `HttpOnly; Secure; SameSite=Strict; Path=/api/auth` cookies with the `__Secure-` prefix.
+- Sessions: 15-minute inactivity timeout checked atomically on every authenticated request and on refresh (refresh is not activity); 7-day absolute lifetime; revoked on logout, idle, reuse, or password reset.
+- Rotation: each refresh token works once; reuse revokes the whole session (token family); concurrent tabs coordinate so legitimate use never looks like reuse.
+- Authorization: user id only from the verified token and live session; every query filtered by it; composite foreign key as a second line of defence; cross-user requests get 404.
+- Abuse: Postgres-backed rate limits per IP and per email; request body limit 512 KB; strict input validation.
+- CSRF: Bearer header for data; origin check and JSON-only bodies on every state-changing request.
+- Transport and headers: HTTPS (HSTS), CSP `default-src 'self'` with no inline scripts, `frame-ancestors 'none'`, `nosniff`, `no-referrer`, Permissions-Policy; `Cache-Control: no-store` on API responses.
+- Secrets and logs: secrets only in environment variables; logs never include bodies, passwords, tokens, cookies or hashes (redaction tested).
 
-- Served only over HTTPS from Vercel's CDN; the production URL is public, while one-off deployment URLs are protected by Vercel Authentication.
-- All user text (habit names) is rendered through React, which escapes it; the app never injects raw HTML.
-- All stored or imported data passes through `parseData` validation before use; invalid data is rejected or backed up, never trusted.
-- No secrets, keys or credentials exist in the code or repo; the `.vercel` link folder is git-ignored.
-- No analytics, trackers or third-party scripts at runtime; the only network requests load the app itself.
-- Releases happen only after the owner approves, on the free Hobby plan (no paid features).
+**Logging and debugging**
+
+- Every API response carries `X-Request-Id`; error bodies include the same `requestId`, and the app shows it as "(ref …)" for server faults and failed saves.
+- One JSON line per request: requestId, method, path, status, errorCode, duration, userId, sessionId, Vercel's request id.
+- `message: "security"` lines with an `event`: `login_failed` (reason `wrong_password` / `unknown_email`), `login_locked`, `rate_limited`, `login_succeeded`, `register_succeeded` / `register_conflict`, `refresh_succeeded`, `refresh_failed` (reason), `refresh_reuse_detected` (warn), `session_expired` (`inactive` / `expired`), `session_invalid`, `logout`, `password_reset_requested` / `completed` / `failed`, `origin_blocked` (warn), `password_rehashed`.
+- Unexpected errors log name, message and stack with the request id; users see only a generic message and the reference.
+- Emails appear only as `emailRef` (keyed hash) so attempts on one account can be correlated; passwords, tokens, cookies and hashes are never logged (tested).
+- Browser: an error boundary replaces blank-page crashes with a Reload screen; render crashes, failed loads and saves, and uncaught errors are logged to the console as `[habits] …` with status, code and requestId.
 
 **Risk register**
 
-| Risk | Likelihood | Impact | Mitigation in place | Residual risk / recommendation |
+| Risk | Likelihood | Impact | Mitigation | Residual / next step |
 | --- | --- | --- | --- | --- |
-| Data lost when the user clears site data, uses private browsing or the browser evicts storage | Medium | High | Writes on every change; storage.persist() requested; backups of unreadable data | No cloud copy. Recommend an Export/Import backup file |
-| Habits visible to anyone using the same device or browser profile | Medium | Low | None (no sign-in by design) | Accepted for a personal tracker; document it for users |
-| Crafted link with `#import=` adds unwanted habits to a user's data | Low | Low | Data is validated and merged, never overwrites; names are escaped | importFromUrl runs on every host. Recommend limiting it to 127.0.0.1 |
-| Vulnerable or compromised npm dependency | Low | Medium | Small dependency set; package-lock.json pins versions | Run npm audit before each release; keep dependencies updated |
-| No Content-Security-Policy or anti-framing headers | Low | Low | No third-party scripts; no sensitive actions | Recommend vercel.json headers (CSP, X-Frame-Options, Referrer-Policy) |
-| Unreviewed change deployed to production | Low | Medium | Deploy only on explicit approval; tests, build and lint run first | Add a Git remote and CI to gate deploys |
-| Unexpected hosting cost | Low | Medium | Hobby plan only; standing rule never to buy or upgrade | Check Vercel Settings → Billing periodically |
-| Corrupted data after a buggy release | Low | High | Validation, no writes on open, backup keys, 56 tests | Bump the schema version with a migration when the format changes |
+| Credential stuffing / brute force | Medium | High | Rate limits, generic errors, Argon2id | Add breach-list check (HIBP k-anonymity) and optional 2FA |
+| Stolen refresh token | Low | High | HttpOnly cookie, rotation, reuse revokes family, 15-min idle, 7-day cap | — |
+| XSS stealing an access token | Low | High | CSP without inline scripts, React escaping, memory-only token | — |
+| Cross-user data access (IDOR) | Low | High | Scoped repository, branded user id, composite FK, 404s; tested | Consider Postgres row-level security |
+| Reset emails can't reach users | High until configured | Medium | Mailer abstraction | Needs a verified sending domain or SMTP option before launch |
+| Account enumeration via sign-up | Medium | Low | Generic messages elsewhere | Accepted trade-off for clear sign-up feedback |
+| Database or env misconfiguration at deploy | Low | High | Config validated at startup; separate Preview/Production databases | Deploy to Preview first, with approval |
+| Vulnerable dependency | Low | Medium | Lockfile; `npm audit` (0 vulnerabilities at writing) | Re-run before each release |
+| Unexpected hosting cost | Low | Medium | Free plans only; standing rule never to buy or upgrade | Check billing pages |
 
 ## 9. Assumptions and dependencies
 
-The design assumes one person per browser, a modern evergreen browser with localStorage enabled, and a small number of habits (typically 3–10). It depends on 6 runtime packages, a standard React toolchain and Vercel's free hosting.
+**Assumptions:** one person per account; modern browsers (Web Locks and BroadcastChannel optional, with fallbacks); correct device clock for local dates; small data per user (whole list loaded at once).
 
-**Assumptions**
+| Dependency | Use |
+| --- | --- |
+| React 19, Tailwind CSS 4, dnd-kit, lucide-react, clsx | UI (unchanged) |
+| hono, @hono/node-server | API routing; local server |
+| drizzle-orm, drizzle-kit, @neondatabase/serverless, @electric-sql/pglite | Database access, migrations, local/test Postgres |
+| @node-rs/argon2, jose, zod | Password hashing, JWTs, validation |
+| Vitest, Testing Library, jsdom, axe-core, oxlint, tsx, concurrently | Tests, linting, dev tooling |
+| Vercel (Hobby), Neon (free), Resend (free) | Hosting, database, email — accounts created by the owner; no paid plans |
 
-- One user per browser profile; no need to share or sync between devices.
-- localStorage is available and persistent (not private browsing, not blocked by policy).
-- The device clock and time zone are correct; dates and streaks follow local time.
-- Daily habits only; weeks start on Monday.
-- A modern browser: Chrome, Edge, Firefox or Safari from the last two years (ES2023, CSS custom properties).
-- Habit counts stay small enough to show on one scrolling page without pagination.
-- The greeting uses the placeholder name TestName until a name setting is added.
-
-**Runtime dependencies**
-
-| Package | Version | Used for |
-| --- | --- | --- |
-| react, react-dom | 19.3 | UI rendering and state |
-| @dnd-kit/core, sortable, modifiers, utilities | 6.3 / 10.0 / 9.0 / 3.2 | Drag-and-drop reordering (mouse, touch, keyboard) |
-| lucide-react | 1.61 | Icons |
-| clsx | 2.1 | Conditional class names |
-| tailwindcss + @tailwindcss/vite | 4.3 | Styling |
-
-**Development dependencies**
-
-| Tool | Version | Used for |
-| --- | --- | --- |
-| TypeScript | 6.0 (strict) | Type checking |
-| Vite + @vitejs/plugin-react | 8.3 / 6.1 | Dev server and production build |
-| Vitest, Testing Library, jsdom | 5.0 / 16.3 / 30.1 | Unit and component tests |
-| axe-core | 4.14 | Automated accessibility checks |
-| oxlint | 1.88 | Linting |
-| Node.js / npm | 24.19 / 11.17 | Toolchain on the development machine |
-
-**External services**
-
-| Service | Plan | Dependency |
-| --- | --- | --- |
-| Vercel | Hobby (free), account masandrakhi-8744 | Builds and hosts <https://my-first-aiapp.vercel.app> |
-| npm registry | Public | Installing packages and the Vercel CLI via npx.cmd |
-
-**Environment note.** On the development PC, PowerShell blocks `npx.ps1`, so commands use `npx.cmd`; the execution policy is left unchanged.
+**Environment variables** (see `.env.example`): `DATABASE_URL`, `APP_ORIGIN`, `JWT_SECRETS`, `IP_HASH_SECRET`, `COOKIE_SECURE`, `MAIL_FROM`, `RESEND_API_KEY`.
 
 ## 10. Glossary of terms
 
 | Term | Meaning |
 | --- | --- |
-| AppData | The single JSON document holding all habits, check-ins and settings |
-| axe / axe-core | Automated accessibility checker used in tests and browser audits |
-| Backfill | Logging a check-in for a past day via the week strip or Week grid |
-| Burst | The small confetti pop from a habit's check button on the first check-in of the day |
-| Check-in / completion | A record that a habit was done on a given date |
-| Component (React) | A reusable piece of UI, such as HabitCard or WeeklyGrid |
-| Context (React) | Shared state passed down the component tree; here, useHabits() |
-| CSP | Content-Security-Policy, a header limiting which scripts a page may run |
-| DateKey | A local date written as YYYY-MM-DD |
-| dnd-kit | The drag-and-drop library behind reordering |
-| Done section | The foldable list of habits already checked off today |
-| Hobby plan | Vercel's free tier |
-| Linger / sink delay | The ~0.9 s a just-checked card stays in place before moving to Done |
-| localStorage | The browser's per-site key-value storage where all data is kept |
-| Memoization | Reusing a previous render or result when its inputs haven't changed |
-| Origin | Scheme + host + port; each origin has its own storage (localhost ≠ 127.0.0.1) |
-| Perfect day | A day on which every habit was checked off |
-| Production build | The optimized files in dist/ produced by npm run build |
-| Reducer | A pure function that applies one action to the state and returns the new state |
-| Reduced motion | An OS setting asking apps to minimize animation |
-| SPA | Single-page application: one HTML page whose content changes without reloads |
+| Access token | Short-lived (15 min) signed JWT proving who the user is; kept in memory |
+| Argon2id | Memory-hard password-hashing algorithm |
+| AuthedUserId | Branded type for a user id that came from a verified, live session |
+| CSP | Content-Security-Policy header restricting what a page may load or run |
+| CSRF | Cross-site request forgery: another site making requests as the user |
+| IDOR | Insecure direct object reference: accessing another user's data by changing an id |
+| Inactivity timeout | Sign-out after 15 minutes without meaningful activity, separate from token expiry |
+| Neon | Hosted serverless Postgres |
+| PGlite | Postgres compiled to WebAssembly, used in-process for development and tests |
+| Refresh token | Long-lived opaque token in an HttpOnly cookie, exchanged for new access tokens |
+| Rotation / reuse detection | Each refresh token works once; presenting a used one revokes the session |
+| Session | Server record of one sign-in, with last activity and expiry |
+| Single-flight refresh | Only one refresh at a time across tabs, sharing the result |
 | Streak | Consecutive scheduled days completed, counted back from today (or yesterday) |
-| Tailwind CSS | Utility-class CSS framework used for styling |
-| Vercel | The hosting platform that builds and serves the live site |
-| Vite | The build tool and dev server |
-| WCAG 2.2 AA | Web Content Accessibility Guidelines, level AA, the accessibility target |
-| Week strip | The Mon–Sun row of circles on each habit card |
+| WCAG 2.2 AA | Accessibility standard the app targets |

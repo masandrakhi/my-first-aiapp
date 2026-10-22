@@ -1,45 +1,50 @@
 import { describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SINK_DELAY_MS } from './components/TodayView'
-import App from './App'
-import { HabitsProvider } from './state/HabitsProvider'
+import { Root } from './Root'
 import { STORAGE_KEY } from './lib/storage'
+import { addHabit, renderSignedIn } from './test/renderApp'
 
+describe('App (signed in)', () => {
+  it('greets the user by the name given at sign-up', async () => {
+    await renderSignedIn('ana@example.com', 'Ana')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Ana')
+  })
 
-const renderApp = () => render(<HabitsProvider><App /></HabitsProvider>)
-
-describe('App', () => {
-  it('adds a habit, checks it off, and persists it', () => {
-    renderApp()
+  it('adds a habit, checks it off, and saves both on the server', async () => {
+    const api = await renderSignedIn()
     fireEvent.click(screen.getByRole('button', { name: /add your first habit/i }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: 'Meditate' } })
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Meditate' } })
     fireEvent.click(within(dialog).getByRole('radio', { name: '🧘' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
 
-    expect(screen.getByText('Meditate')).toBeInTheDocument()
+    const check = await screen.findByRole('button', { name: /mark meditate done today/i })
     expect(screen.getByText('Start a streak')).toBeInTheDocument()
-
-    const check = screen.getByRole('button', { name: /mark meditate done today/i })
     fireEvent.click(check)
     expect(check).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText(/1 day/)).toBeInTheDocument()
 
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
-    expect(stored.habits[0]).toMatchObject({ name: 'Meditate', emoji: '🧘' })
-    expect(Object.values(stored.completions)[0]).toHaveLength(1)
+    await waitFor(() => {
+      const store = [...api.stores.values()][0]!
+      expect(store.habits[0]).toMatchObject({ name: 'Meditate', emoji: '🧘' })
+      expect(Object.values(store.completions)[0]).toHaveLength(1)
+    })
   })
 
-  it('logs a forgotten day from the week strip on Today', () => {
+  it('never keeps habit data in the browser’s storage', async () => {
+    await renderSignedIn()
+    await addHabit('Floss')
+    fireEvent.click(screen.getByRole('button', { name: /mark floss done today/i }))
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('logs a forgotten day from the week strip on Today', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 9, 21, 12)) // Wednesday
     try {
-      renderApp()
-      fireEvent.click(screen.getByRole('button', { name: /add your first habit/i }))
-      const dialog = screen.getByRole('dialog')
-      fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: 'Stretch' } })
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
-
+      await renderSignedIn()
+      await addHabit('Stretch')
       const strip = screen.getByRole('group', { name: 'Stretch this week' })
       const days = within(strip).getAllByRole('button')
       expect(days).toHaveLength(7)
@@ -54,17 +59,12 @@ describe('App', () => {
     }
   })
 
-  it('moves a checked habit into a collapsible Done section', () => {
+  it('moves a checked habit into a collapsible Done section', async () => {
+    await renderSignedIn()
+    await addHabit('Walk')
+    await addHabit('Journal')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
-      renderApp()
-      for (const name of ['Walk', 'Journal']) {
-        fireEvent.click(screen.getAllByRole('button', { name: /add (your first )?habit/i })[0]!)
-        const dialog = screen.getByRole('dialog')
-        fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: name } })
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
-      }
-
       fireEvent.click(screen.getByRole('button', { name: /mark walk done today/i }))
       // It stays put briefly so the check animation can play...
       expect(within(screen.getByRole('list', { name: /to do/i })).getByText('Walk')).toBeInTheDocument()
@@ -85,39 +85,43 @@ describe('App', () => {
     }
   })
 
-  it('keeps habits and progress after closing and reopening the app', () => {
-    const first = renderApp()
-    fireEvent.click(screen.getByRole('button', { name: /add your first habit/i }))
-    const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: 'Floss' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
+  it('restores habits and progress from the server after closing and reopening', async () => {
+    await renderSignedIn()
+    await addHabit('Floss')
     fireEvent.click(screen.getByRole('button', { name: /mark floss done today/i }))
-    first.unmount() // "close the browser"
+    await waitFor(() => expect(screen.getByRole('button', { name: /mark floss done today/i })).toHaveAttribute('aria-pressed', 'true'))
+    cleanup() // "close the browser": the in-memory access token is gone; the refresh cookie remains
 
-    renderApp() // "come back"
-    fireEvent.click(screen.getByRole('button', { name: /1 done today/i })) // done habits start folded
+    render(<Root />) // "come back"
+    fireEvent.click(await screen.findByRole('button', { name: /1 done today/i }))
     expect(screen.getByText('Floss')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /mark floss done today/i })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('never writes to storage just by opening the app', () => {
-    localStorage.setItem(STORAGE_KEY, '{"version":1,"habits":[],"completions":{},"settings":{"theme":"dark","collapseDone":true}}')
-    const setItem = vi.spyOn(Storage.prototype, 'setItem')
-    try {
-      renderApp()
-      expect(setItem).not.toHaveBeenCalledWith(STORAGE_KEY, expect.anything())
-    } finally {
-      setItem.mockRestore()
-    }
-  })
-
-  it('disables saving an empty name', () => {
-    renderApp()
+  it('disables saving an empty name', async () => {
+    await renderSignedIn()
     fireEvent.click(screen.getByRole('button', { name: 'Add habit' })) // the "+" button
     const dialog = screen.getByRole('dialog')
     const submit = within(dialog).getByRole('button', { name: 'Add habit' })
     expect(submit).toBeDisabled()
-    fireEvent.change(within(dialog).getByPlaceholderText(/drink water/i), { target: { value: '   ' } })
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: '   ' } })
     expect(submit).toBeDisabled()
+  })
+
+  it('reloads from the server, shows a reference code and logs the failure when a save fails', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const api = await renderSignedIn()
+      await addHabit('Read')
+      api.failNextWrite()
+      fireEvent.click(screen.getByRole('button', { name: /mark read done today/i }))
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't save your last change")
+      expect(alert).toHaveTextContent(/\(ref req-\d+\)/)
+      await waitFor(() => expect(screen.getByRole('button', { name: /mark read done today/i })).toHaveAttribute('aria-pressed', 'false'))
+      expect(log).toHaveBeenCalledWith('[habits] saving failed: check-in', expect.objectContaining({ status: 500, code: 'server_error', requestId: expect.stringMatching(/^req-/) }))
+    } finally {
+      log.mockRestore()
+    }
   })
 })
