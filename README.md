@@ -3,6 +3,8 @@
 A small, motivating daily habit tracker. React 19 + TypeScript (strict) + Tailwind CSS v4, built with Vite.
 All data stays in the browser (localStorage); there is no server or account.
 
+Live at <https://my-first-aiapp.vercel.app>. Full design document: [docs/DESIGN.md](docs/DESIGN.md).
+
 ## Scripts
 
 ```bash
