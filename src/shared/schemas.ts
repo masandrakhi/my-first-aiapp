@@ -4,6 +4,7 @@
  */
 import { z } from 'zod'
 import { HABIT_COLORS } from '../lib/palette'
+import type { AppData } from '../types'
 
 export const NAME_MAX = 40
 export const PASSWORD_MIN = 12
@@ -59,6 +60,9 @@ export const habitDraftSchema = z.object({
   color: z.string().refine((c) => HABIT_COLORS.includes(c), 'Pick a colour from the palette'),
 })
 
+/** What the user types when adding or editing a habit. */
+export type HabitDraft = z.infer<typeof habitDraftSchema>
+
 export const habitPatchSchema = habitDraftSchema.partial().refine((p) => Object.keys(p).length > 0, 'Nothing to update')
 
 export const reorderSchema = z.object({ ids: z.array(z.uuid()).max(500) })
@@ -74,6 +78,9 @@ export const importSchema = z.object({
   deviceImportId: z.string().min(8).max(64),
   data: z.unknown(),
 })
+
+/** GET /api/habits: everything the Today and Week views need, for the signed-in user only. */
+export type HabitsPayload = Omit<AppData, 'version'>
 
 /** User as returned by the API. */
 export interface ApiUser {

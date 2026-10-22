@@ -50,6 +50,16 @@ describe('per-user data isolation', () => {
     expect(res.status).toBe(400)
   })
 
+  it('applies a reorder of the caller’s own habits, and only theirs', async () => {
+    await bob.req('POST', '/api/habits', { ...DRAFT, name: 'Stretch' })
+    const before = (await bob.req('GET', '/api/habits')).body.habits.map((x: { id: string }) => x.id)
+    expect((await bob.req('PUT', '/api/habits/order', { ids: [...before].reverse() })).status).toBe(204)
+    const after = (await bob.req('GET', '/api/habits')).body.habits
+    expect(after.map((x: { id: string }) => x.id)).toEqual([...before].reverse())
+    expect(after.map((x: { order: number }) => x.order)).toEqual(before.map((_: string, i: number) => i))
+    expect((await alice.req('GET', '/api/habits')).body.habits[0].order).toBe(0)
+  })
+
   it('ignores any user id smuggled into a request body', async () => {
     const aliceId = (await alice.req('GET', '/api/me')).body.user.id
     const created = await bob.req('POST', '/api/habits', { ...DRAFT, name: 'Mine', userId: aliceId, user_id: aliceId })
@@ -90,6 +100,27 @@ describe('per-user data isolation', () => {
 
     const aliceView = await alice.req('GET', '/api/habits')
     expect(aliceView.body.completions[aliceHabit]).toEqual(['2026-10-21'])
+  })
+
+  it('imports several habits in their saved order, after the caller’s existing ones', async () => {
+    const carol = new Client(h, '203.0.113.12')
+    await carol.register('carol@example.com')
+    await carol.req('POST', '/api/habits', { ...DRAFT, name: 'Existing' })
+    const legacy = {
+      version: 1,
+      habits: [
+        { id: 'b', name: 'Second', emoji: '🌙', color: '#059669', order: 1 },
+        { id: 'a', name: 'First', emoji: '🌞', color: '#059669', order: 0 },
+        { id: 'c', name: '   ', emoji: '🚫', color: '#059669', order: 2 },
+      ],
+      completions: { a: ['2026-10-20'], b: ['2026-10-19', '2026-10-21'] },
+      settings: { theme: 'system' },
+    }
+    expect((await carol.req('POST', '/api/import', { deviceImportId: 'device-5678', data: legacy })).body).toEqual({ imported: 2, alreadyImported: false })
+    const view = (await carol.req('GET', '/api/habits')).body
+    expect(view.habits.map((x: { name: string; order: number }) => [x.name, x.order])).toEqual([['Existing', 0], ['First', 1], ['Second', 2]])
+    expect(view.completions[view.habits[1].id]).toEqual(['2026-10-20'])
+    expect(view.completions[view.habits[2].id]).toEqual(['2026-10-19', '2026-10-21'])
   })
 
   it('keeps settings per user', async () => {

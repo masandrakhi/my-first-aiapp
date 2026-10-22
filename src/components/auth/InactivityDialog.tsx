@@ -14,7 +14,12 @@ export function InactivityDialog() {
   const [idle, setIdle] = useState(0)
 
   useEffect(() => {
-    const id = window.setInterval(() => setIdle(idleMs()), TICK_MS)
+    // While the user is active the phase can't change, so keep the old value and skip the re-render.
+    const tick = () => setIdle((prev) => {
+      const next = idleMs()
+      return idlePhase(prev) === 'active' && idlePhase(next) === 'active' ? prev : next
+    })
+    const id = window.setInterval(tick, TICK_MS)
     return () => window.clearInterval(id)
   }, [idleMs])
 

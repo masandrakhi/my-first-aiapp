@@ -22,6 +22,9 @@ export class HttpError extends Error {
 }
 
 export const unauthorized = () => new HttpError(401, 'unauthorized', 'Please sign in.')
+export const sessionExpired = () => new HttpError(401, 'session_expired', 'You were signed out after 15 minutes of inactivity.')
+export const invalidRefresh = () => new HttpError(401, 'invalid_refresh', 'Please sign in.')
+export const invalidResetLink = () => new HttpError(400, 'invalid_reset_link', 'This reset link is invalid or has expired. Request a new one.')
 export const notFound = () => new HttpError(404, 'not_found', 'Not found.')
 export const rateLimited = (retryAfterSec: number) =>
   new HttpError(429, 'rate_limited', 'Too many attempts. Please wait a moment and try again.', { retryAfterSec })

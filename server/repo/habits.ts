@@ -2,27 +2,18 @@
  * Every function here takes an AuthedUserId and filters by it in SQL. There is deliberately no
  * function that reads habits without a user id, so cross-user access cannot be written by accident.
  */
-import { and, asc, eq, max } from 'drizzle-orm'
-import type { AppData, Completions, Habit, Theme } from '../../src/types'
+import { randomUUID } from 'node:crypto'
+import { and, asc, eq, inArray, max, sql } from 'drizzle-orm'
+import type { AppData, Completions, Habit } from '../../src/types'
 import { colorAt, HABIT_COLORS } from '../../src/lib/palette'
 import { parseData } from '../../src/lib/appData'
-import { dateKeySchema, NAME_MAX } from '../../src/shared/schemas'
+import { dateKeySchema, NAME_MAX, type ApiUser, type HabitDraft, type HabitsPayload } from '../../src/shared/schemas'
 import type { DbOrTx } from '../db/client'
-import { completions, habits, imports, userSettings } from '../db/schema'
+import { completions, habits, imports, users, userSettings } from '../db/schema'
 import type { AuthedUserId } from '../middleware'
 
 type HabitRow = typeof habits.$inferSelect
-
-export interface Settings {
-  theme: Theme
-  collapseDone: boolean
-}
-
-export interface HabitDraft {
-  name: string
-  emoji: string
-  color: string
-}
+type Settings = AppData['settings']
 
 const toHabit = (row: HabitRow): Habit => ({
   id: row.id,
@@ -42,6 +33,11 @@ async function nextSortOrder(db: DbOrTx, uid: AuthedUserId): Promise<number> {
   return (row?.top ?? -1) + 1
 }
 
+export async function getProfile(db: DbOrTx, uid: AuthedUserId): Promise<ApiUser | null> {
+  const [user] = await db.select({ id: users.id, email: users.email, name: users.name }).from(users).where(eq(users.id, uid))
+  return user ?? null
+}
+
 export async function getSettings(db: DbOrTx, uid: AuthedUserId): Promise<Settings> {
   const [row] = await db.select().from(userSettings).where(eq(userSettings.userId, uid))
   return { theme: row?.theme ?? 'system', collapseDone: row?.collapseDone ?? true }
@@ -56,16 +52,20 @@ export async function updateSettings(db: DbOrTx, uid: AuthedUserId, patch: Parti
 }
 
 /** Everything the Today and Week views need, for this user only. */
-export async function listAll(db: DbOrTx, uid: AuthedUserId): Promise<Omit<AppData, 'version'>> {
-  const rows = await db.select().from(habits).where(eq(habits.userId, uid)).orderBy(asc(habits.sortOrder))
-  const done = await db
-    .select({ habitId: completions.habitId, date: completions.date })
-    .from(completions)
-    .where(eq(completions.userId, uid))
-    .orderBy(asc(completions.date))
+export async function listAll(db: DbOrTx, uid: AuthedUserId): Promise<HabitsPayload> {
+  // Independent reads: issued together so a pooled connection can run them in parallel.
+  const [rows, done, settings] = await Promise.all([
+    db.select().from(habits).where(eq(habits.userId, uid)).orderBy(asc(habits.sortOrder)),
+    db
+      .select({ habitId: completions.habitId, date: completions.date })
+      .from(completions)
+      .where(eq(completions.userId, uid))
+      .orderBy(asc(completions.date)),
+    getSettings(db, uid),
+  ])
   const byHabit: Completions = {}
   for (const c of done) (byHabit[c.habitId] ??= []).push(c.date)
-  return { habits: rows.map(toHabit), completions: byHabit, settings: await getSettings(db, uid) }
+  return { habits: rows.map(toHabit), completions: byHabit, settings }
 }
 
 export async function createHabit(db: DbOrTx, uid: AuthedUserId, draft: HabitDraft, at: Date): Promise<Habit> {
@@ -110,13 +110,19 @@ export async function reorderHabits(db: DbOrTx, uid: AuthedUserId, ids: string[]
   const mine = await db.select({ id: habits.id }).from(habits).where(eq(habits.userId, uid))
   const mineSet = new Set(mine.map((h) => h.id))
   if (ids.length !== mineSet.size || new Set(ids).size !== ids.length || !ids.every((id) => mineSet.has(id))) return false
-  await db.transaction(async (tx) => {
-    for (const [i, id] of ids.entries()) await tx.update(habits).set({ sortOrder: i }).where(owned(uid, id))
-  })
+  if (ids.length === 0) return true
+  // One statement for the whole list (atomic on its own) instead of one UPDATE per habit.
+  const position = sql.join(ids.map((id, i) => sql`when ${id}::uuid then ${i}::int`), sql` `)
+  await db
+    .update(habits)
+    .set({ sortOrder: sql`case ${habits.id} ${position} end` })
+    .where(and(eq(habits.userId, uid), inArray(habits.id, ids)))
   return true
 }
 
 const MAX_IMPORT_HABITS = 200
+/** Check-ins per INSERT: 4 parameters each keeps a batch far below Postgres' 65,535-parameter limit. */
+const IMPORT_BATCH = 5000
 
 /**
  * Copies a device's legacy localStorage data into this user's account, once per device.
@@ -131,32 +137,36 @@ export async function importLegacy(
     const claimed = await tx.insert(imports).values({ userId: uid, deviceImportId, createdAt: at }).onConflictDoNothing().returning()
     if (claimed.length === 0) return { imported: 0, alreadyImported: true }
 
-    let order = await nextSortOrder(tx, uid)
-    let imported = 0
+    const first = await nextSortOrder(tx, uid)
     const source = [...data.habits].sort((a, b) => a.order - b.order).slice(0, MAX_IMPORT_HABITS)
+    const rows: (typeof habits.$inferInsert)[] = []
+    const checkIns: (typeof completions.$inferInsert)[] = []
     for (const [i, h] of source.entries()) {
       const name = h.name.trim().slice(0, NAME_MAX)
       if (!name) continue
-      const [row] = await tx
-        .insert(habits)
-        .values({
-          userId: uid,
-          name,
-          emoji: h.emoji.slice(0, 16) || '✨',
-          color: HABIT_COLORS.includes(h.color) ? h.color : colorAt(i),
-          frequency: { type: 'daily' },
-          archived: h.archived,
-          sortOrder: order++,
-          createdAt: at,
-          updatedAt: at,
-        })
-        .returning({ id: habits.id })
-      const dates = (data.completions[h.id] ?? []).filter((d) => dateKeySchema.safeParse(d).success && d <= latestDate)
-      if (dates.length) {
-        await tx.insert(completions).values(dates.map((date) => ({ habitId: row!.id, userId: uid, date, createdAt: at }))).onConflictDoNothing()
+      // Server-chosen ids, so each habit's check-ins can be prepared before anything is written.
+      const id = randomUUID()
+      rows.push({
+        id,
+        userId: uid,
+        name,
+        emoji: h.emoji.slice(0, 16) || '✨',
+        color: HABIT_COLORS.includes(h.color) ? h.color : colorAt(i),
+        frequency: { type: 'daily' },
+        archived: h.archived,
+        sortOrder: first + rows.length,
+        createdAt: at,
+        updatedAt: at,
+      })
+      for (const date of data.completions[h.id] ?? []) {
+        if (date <= latestDate && dateKeySchema.safeParse(date).success) checkIns.push({ habitId: id, userId: uid, date, createdAt: at })
       }
-      imported++
     }
-    return { imported, alreadyImported: false }
+    // A handful of batched inserts instead of two per habit; batches stay under Postgres' parameter limit.
+    if (rows.length) await tx.insert(habits).values(rows)
+    for (let i = 0; i < checkIns.length; i += IMPORT_BATCH) {
+      await tx.insert(completions).values(checkIns.slice(i, i + IMPORT_BATCH)).onConflictDoNothing()
+    }
+    return { imported: rows.length, alreadyImported: false }
   })
 }

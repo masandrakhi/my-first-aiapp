@@ -145,7 +145,9 @@ describe('access tokens, inactivity and refresh', () => {
     const c = new Client(h)
     await c.register(email())
     const stolen = c.cookie
-    expect((await c.refresh()).status).toBe(200)
+    const rotated = await c.refresh()
+    expect(rotated.status).toBe(200)
+    expect(rotated.body.user).toMatchObject({ email: expect.stringContaining('@'), name: null })
     expect(c.cookie).not.toBe(stolen)
 
     const attacker = new Client(h)

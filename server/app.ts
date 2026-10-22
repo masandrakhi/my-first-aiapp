@@ -1,13 +1,10 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { eq } from 'drizzle-orm'
-import { users } from './db/schema'
 import type { AppDeps } from './deps'
-import { HttpError, unauthorized } from './errors'
-import { errorResponse, originCheck, requestId, requestLog, requireAuth, type AppEnv } from './middleware'
+import { HttpError } from './errors'
+import { errorResponse, originCheck, requestId, requestLog, type AppEnv } from './middleware'
 import { authRoutes } from './routes/auth'
 import { dataRoutes } from './routes/habits'
-import { getSettings } from './repo/habits'
 
 /** Builds the API. Everything external (database, clock, mailer, config) is injected. */
 export function createApp(deps: AppDeps) {
@@ -28,12 +25,6 @@ export function createApp(deps: AppDeps) {
   app.use('*', originCheck)
 
   app.route('/auth', authRoutes)
-
-  app.get('/me', requireAuth, async (c) => {
-    const [user] = await deps.db.select({ id: users.id, email: users.email, name: users.name }).from(users).where(eq(users.id, c.get('userId')))
-    if (!user) throw unauthorized()
-    return c.json({ user, settings: await getSettings(deps.db, c.get('userId')) })
-  })
 
   app.route('/', dataRoutes)
 

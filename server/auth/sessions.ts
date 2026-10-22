@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import type { DbOrTx } from '../db/client'
 import { refreshTokens, sessions } from '../db/schema'
 import type { AppDeps } from '../deps'
@@ -33,11 +33,10 @@ export async function revokeSession(db: DbOrTx, sessionId: string, at: Date, rea
 
 /** Signs a user out everywhere (used after a password reset). */
 export async function revokeAllSessions(db: DbOrTx, userId: string, at: Date, reason: RevokeReason) {
-  const active = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
-  for (const s of active) await revokeSession(db, s.id, at, reason)
+  // Two statements however many devices the user has, instead of two per session.
+  await db.update(sessions).set({ revokedAt: at, revokeReason: reason }).where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
+  const ofUser = db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId))
+  await db.update(refreshTokens).set({ revokedAt: at }).where(and(inArray(refreshTokens.sessionId, ofUser), isNull(refreshTokens.revokedAt)))
 }
 
 /** 'inactive' = idle 15+ minutes; 'expired' = past the absolute lifetime; 'invalid' = unknown or already revoked. */

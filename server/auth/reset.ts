@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from 'drizzle-orm'
 import { passwordResets, users } from '../db/schema'
 import type { AppDeps } from '../deps'
-import { HttpError } from '../errors'
+import { HttpError, invalidResetLink } from '../errors'
 import { randomToken, sha256 } from './crypto'
 import { hashPassword, passwordProblem } from './password'
 import { revokeAllSessions } from './sessions'
@@ -48,7 +48,7 @@ export async function completePasswordReset(deps: AppDeps, token: string, newPas
     .from(passwordResets)
     .innerJoin(users, eq(users.id, passwordResets.userId))
     .where(and(eq(passwordResets.tokenHash, sha256(token)), isNull(passwordResets.usedAt), gt(passwordResets.expiresAt, at)))
-  if (!reset) throw new HttpError(400, 'invalid_reset_link', 'This reset link is invalid or has expired. Request a new one.')
+  if (!reset) throw invalidResetLink()
 
   const problem = passwordProblem(newPassword, reset.email)
   if (problem) throw new HttpError(400, 'validation_error', problem, { fields: { newPassword: problem } })
@@ -61,7 +61,7 @@ export async function completePasswordReset(deps: AppDeps, token: string, newPas
       .set({ usedAt: at })
       .where(and(eq(passwordResets.id, reset.id), isNull(passwordResets.usedAt)))
       .returning({ id: passwordResets.id })
-    if (claimed.length === 0) throw new HttpError(400, 'invalid_reset_link', 'This reset link is invalid or has expired. Request a new one.')
+    if (claimed.length === 0) throw invalidResetLink()
     await tx.update(users).set({ passwordHash, passwordChangedAt: at }).where(eq(users.id, reset.userId))
     await tx.update(passwordResets).set({ usedAt: at }).where(and(eq(passwordResets.userId, reset.userId), isNull(passwordResets.usedAt)))
     await revokeAllSessions(tx, reset.userId, at, 'password_reset')

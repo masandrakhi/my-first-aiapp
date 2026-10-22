@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BACKUP_PREFIX, defaultData, loadData, saveData, STORAGE_KEY } from '../lib/storage'
-import { createHabit, habitsReducer } from './habitsReducer'
+import { createHabit } from '../test/habits'
+import { habitsReducer } from './habitsReducer'
 
 describe('habitsReducer', () => {
   const habit = createHabit({ name: '  Read  ', emoji: '📚', color: '#8b5cf6' }, 0)

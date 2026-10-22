@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
-import type { AppData, Habit } from '../types'
+import type { Habit } from '../types'
 import { THEME_KEY } from '../config'
+import type { HabitsPayload } from '../shared/schemas'
 import { defaultData } from '../lib/appData'
 import { ApiError } from '../auth/apiClient'
 import { logError, refSuffix } from '../lib/log'
@@ -33,7 +34,7 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
 
   const reload = useCallback(async () => {
     try {
-      const server = await api.request<Omit<AppData, 'version'>>('GET', '/api/habits')
+      const server = await api.request<HabitsPayload>('GET', '/api/habits')
       dispatch({ type: 'REPLACE', data: { version: 1, ...server } })
       rememberTheme(server.settings.theme)
       setStatus('ready')

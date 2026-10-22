@@ -37,6 +37,8 @@ export interface ApiClientEvents {
 
 type Message = { type: 'session'; session: AuthResponse } | { type: 'signout'; reason: SignOutReason }
 
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 async function readJson<T>(res: Response): Promise<T | null> {
@@ -115,7 +117,7 @@ export function createApiClient(events: ApiClientEvents) {
   }
 
   /** Authenticated request. Refreshes once on an expired token; ends the session on any other 401. */
-  async function request<T>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
+  async function request<T>(method: HttpMethod, path: string, body?: unknown, retried = false): Promise<T> {
     const headers: Record<string, string> = body === undefined ? {} : { ...JSON_HEADERS }
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`
     const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' })

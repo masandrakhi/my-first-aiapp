@@ -1,6 +1,5 @@
+import type { HabitDraft } from '../shared/schemas'
 import type { AppData, DateKey, Habit, HabitId, Theme } from '../types'
-
-export type HabitDraft = Pick<Habit, 'name' | 'emoji' | 'color'>
 
 export type Action =
   /** The reducer assigns `order` (after the last habit), so callers needn't know the list. */
@@ -62,19 +61,5 @@ export function habitsReducer(state: AppData, action: Action): AppData {
       const unhandled: never = action
       return unhandled
     }
-  }
-}
-
-/** A new daily habit. Impure (random id, timestamp), so call it outside the reducer. */
-export function createHabit(draft: HabitDraft, order = 0): Habit {
-  return {
-    id: crypto.randomUUID(),
-    name: draft.name.trim(),
-    emoji: draft.emoji,
-    color: draft.color,
-    frequency: { type: 'daily' },
-    createdAt: new Date().toISOString(),
-    archived: false,
-    order,
   }
 }

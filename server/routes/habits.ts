@@ -1,13 +1,13 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { dateKeySchema, habitDraftSchema, habitPatchSchema, importSchema, reorderSchema, settingsPatchSchema } from '../../src/shared/schemas'
-import { HttpError, notFound } from '../errors'
+import { HttpError, notFound, unauthorized } from '../errors'
 import { jsonBody, requireAuth, type AppContext, type AppEnv } from '../middleware'
 import * as repo from '../repo/habits'
 
 /** All routes here require a live session; the user id always comes from it, never from the request. */
 export const dataRoutes = new Hono<AppEnv>()
-for (const path of ['/habits', '/habits/*', '/me/*', '/session/*', '/import']) dataRoutes.use(path, requireAuth)
+for (const path of ['/habits', '/habits/*', '/me', '/me/*', '/session/*', '/import']) dataRoutes.use(path, requireAuth)
 
 const uuid = z.uuid()
 
@@ -71,6 +71,13 @@ dataRoutes.delete('/habits/:id/completions/:date', async (c) => {
   const [id, date] = [habitId(c), checkInDate(c)]
   if (!(await repo.setCompletion(c.get('deps').db, c.get('userId'), id, date, false, c.get('deps').now()))) throw notFound()
   return c.body(null, 204)
+})
+
+dataRoutes.get('/me', async (c) => {
+  const { db } = c.get('deps')
+  const [user, settings] = await Promise.all([repo.getProfile(db, c.get('userId')), repo.getSettings(db, c.get('userId'))])
+  if (!user) throw unauthorized()
+  return c.json({ user, settings })
 })
 
 dataRoutes.patch('/me/settings', async (c) => {

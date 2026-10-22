@@ -3,15 +3,14 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { and, eq, isNull } from 'drizzle-orm'
 import { forgotSchema, loginSchema, registerSchema, resetSchema, type ApiUser, type AuthResponse } from '../../src/shared/schemas'
 import { refreshTokens, users, userSettings } from '../db/schema'
-import type { AppDeps } from '../deps'
-import { HttpError, rateLimited } from '../errors'
+import { HttpError, invalidRefresh, rateLimited, sessionExpired } from '../errors'
 import { audit, clientIp, emailRef, jsonBody, type AppContext, type AppEnv } from '../middleware'
 import { sha256 } from '../auth/crypto'
 import { dummyHash, hashPassword, needsRehash, passwordProblem, verifyPassword } from '../auth/password'
-import { clear, consume, LIMITS, peek } from '../auth/rateLimit'
+import { clear, consume, LIMITS, peek, type Limit } from '../auth/rateLimit'
 import { rotateRefreshToken } from '../auth/refresh'
 import { completePasswordReset, requestPasswordReset } from '../auth/reset'
-import { createSession, revokeSession } from '../auth/sessions'
+import { createSession, revokeSession, type NewSession } from '../auth/sessions'
 import { signAccessToken, verifyAccessToken } from '../auth/tokens'
 
 export const authRoutes = new Hono<AppEnv>()
@@ -32,20 +31,14 @@ function setRefreshCookie(c: AppContext, token: string, expiresAt: Date) {
 const clearRefreshCookie = (c: AppContext) =>
   deleteCookie(c, c.get('deps').config.cookieName, { path: REFRESH_PATH, secure: c.get('deps').config.cookieSecure })
 
-async function loadUser(deps: AppDeps, userId: string): Promise<ApiUser> {
-  const [user] = await deps.db.select({ id: users.id, email: users.email, name: users.name }).from(users).where(eq(users.id, userId))
-  if (!user) throw new HttpError(401, 'unauthorized', 'Please sign in.')
-  return user
-}
-
-async function signedIn(c: AppContext, user: ApiUser, session: { sessionId: string; refreshToken: string; expiresAt: Date }): Promise<AuthResponse> {
+async function signedIn(c: AppContext, user: ApiUser, session: NewSession): Promise<AuthResponse> {
   const deps = c.get('deps')
   setRefreshCookie(c, session.refreshToken, session.expiresAt)
   const accessToken = await signAccessToken(deps.config, { userId: user.id, sessionId: session.sessionId }, deps.now())
   return { accessToken, expiresIn: deps.config.accessTokenTtlSec, user }
 }
 
-async function enforce(c: AppContext, limit: (typeof LIMITS)[keyof typeof LIMITS], subject: string) {
+async function enforce(c: AppContext, limit: Limit, subject: string) {
   const state = await consume(c.get('deps'), limit, subject)
   if (!state.allowed) {
     audit(c, 'rate_limited', { limit: limit.name, retryAfterSec: state.retryAfterSec }, 'warn')
@@ -118,7 +111,7 @@ authRoutes.post('/refresh', async (c) => {
   const presented = getCookie(c, deps.config.cookieName)
   if (!presented) {
     audit(c, 'refresh_failed', { reason: 'no_cookie' })
-    throw new HttpError(401, 'invalid_refresh', 'Please sign in.')
+    throw invalidRefresh()
   }
 
   const result = await rotateRefreshToken(deps, presented)
@@ -127,13 +120,10 @@ authRoutes.post('/refresh', async (c) => {
     if (result.reason === 'reuse') audit(c, 'refresh_reuse_detected', { userId: result.userId, sessionId: result.sessionId }, 'warn')
     else audit(c, 'refresh_failed', { reason: result.reason, userId: result.userId, sessionId: result.sessionId })
     clearRefreshCookie(c)
-    throw result.code === 'session_expired'
-      ? new HttpError(401, 'session_expired', 'You were signed out after 15 minutes of inactivity.')
-      : new HttpError(401, 'invalid_refresh', 'Please sign in.')
+    throw result.code === 'session_expired' ? sessionExpired() : invalidRefresh()
   }
-  const user = await loadUser(deps, result.userId)
-  audit(c, 'refresh_succeeded', { userId: result.userId, sessionId: result.sessionId })
-  return c.json(await signedIn(c, user, result))
+  audit(c, 'refresh_succeeded', { userId: result.user.id, sessionId: result.sessionId })
+  return c.json(await signedIn(c, result.user, result))
 })
 
 authRoutes.post('/logout', async (c) => {
@@ -154,7 +144,8 @@ authRoutes.post('/logout', async (c) => {
   const bearer = c.req.header('authorization')?.replace(/^Bearer /, '')
   if (bearer) {
     const verified = await verifyAccessToken(deps.config, bearer, at)
-    if (verified.ok) {
+    // Usually the same session as the cookie's; it is only revoked once.
+    if (verified.ok && !revoked.has(verified.claims.sessionId)) {
       await revokeSession(deps.db, verified.claims.sessionId, at, 'logout')
       revoked.add(verified.claims.sessionId)
     }
@@ -168,7 +159,7 @@ authRoutes.post('/password/forgot', async (c) => {
   const deps = c.get('deps')
   const started = Date.now()
   const { email } = forgotSchema.parse(await jsonBody(c))
-  const [byIp, byEmail] = [await consume(deps, LIMITS.forgotPerIp, clientIp(c)), await consume(deps, LIMITS.forgotPerEmail, email)]
+  const [byIp, byEmail] = await Promise.all([consume(deps, LIMITS.forgotPerIp, clientIp(c)), consume(deps, LIMITS.forgotPerEmail, email)])
   if (!byIp.allowed) {
     audit(c, 'rate_limited', { limit: LIMITS.forgotPerIp.name, retryAfterSec: byIp.retryAfterSec }, 'warn')
     throw rateLimited(byIp.retryAfterSec)

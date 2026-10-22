@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto'
 import type { AppDeps } from './deps'
 import type { LogFields } from './logger'
 import { hmacKey } from './auth/crypto'
-import { HttpError, unauthorized } from './errors'
+import { HttpError, sessionExpired, unauthorized } from './errors'
 import { touchSession } from './auth/sessions'
 import { verifyAccessToken } from './auth/tokens'
 
@@ -72,7 +72,7 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   const result = await touchSession(deps, userId, sessionId)
   if (result === 'inactive' || result === 'expired') {
     audit(c, 'session_expired', { reason: result, userId, sessionId })
-    throw new HttpError(401, 'session_expired', 'You were signed out after 15 minutes of inactivity.')
+    throw sessionExpired()
   }
   if (result !== 'ok') {
     audit(c, 'session_invalid', { userId, sessionId })

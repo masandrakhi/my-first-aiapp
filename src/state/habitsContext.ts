@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { AppData, DateKey, HabitId, Theme } from '../types'
-import type { HabitDraft } from './habitsReducer'
+import type { HabitDraft } from '../shared/schemas'
 
 /** Stable action functions: identity never changes, so they're safe in memo deps and props. */
 export interface HabitActions {

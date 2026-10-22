@@ -2,7 +2,7 @@
 // The #import= hand-over only runs on 127.0.0.1 (local development), so this file runs as that origin.
 import { describe, expect, it } from 'vitest'
 import type { AppData } from '../types'
-import { createHabit } from '../state/habitsReducer'
+import { createHabit } from '../test/habits'
 import { defaultData, importFromUrl, loadData, mergeData, parseData, saveData } from './storage'
 
 const withHabits = (names: string[], completions: Record<number, string[]> = {}): AppData => {

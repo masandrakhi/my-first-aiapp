@@ -5,7 +5,13 @@ import type { Config } from '../config'
 const ISSUER = 'habits-api'
 const AUDIENCE = 'habits-app'
 
-const keyId = (secret: Uint8Array) => createHash('sha256').update(secret).digest('hex').slice(0, 12)
+// A key's id is a hash of it; computed once per key rather than on every sign and verify.
+const keyIds = new WeakMap<Uint8Array, string>()
+function keyId(secret: Uint8Array): string {
+  let id = keyIds.get(secret)
+  if (!id) keyIds.set(secret, (id = createHash('sha256').update(secret).digest('hex').slice(0, 12)))
+  return id
+}
 const seconds = (d: Date) => Math.floor(d.getTime() / 1000)
 
 export interface AccessClaims {
