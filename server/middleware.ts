@@ -1,12 +1,12 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { ZodError } from 'zod'
 import { randomBytes } from 'node:crypto'
-import type { AppDeps } from './deps'
-import type { LogFields } from './logger'
-import { hmacKey } from './auth/crypto'
-import { HttpError, sessionExpired, unauthorized } from './errors'
-import { touchSession } from './auth/sessions'
-import { verifyAccessToken } from './auth/tokens'
+import type { AppDeps } from './deps.js'
+import type { LogFields } from './logger.js'
+import { hmacKey } from './auth/crypto.js'
+import { HttpError, sessionExpired, unauthorized } from './errors.js'
+import { touchSession } from './auth/sessions.js'
+import { verifyAccessToken } from './auth/tokens.js'
 
 /**
  * A user id that came from a verified access token AND a live session.

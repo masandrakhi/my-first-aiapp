@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { decodeProtectedHeader, errors, jwtVerify, SignJWT } from 'jose'
-import type { Config } from '../config'
+import type { Config } from '../config.js'
 
 const ISSUER = 'habits-api'
 const AUDIENCE = 'habits-app'

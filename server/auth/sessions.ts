@@ -1,8 +1,8 @@
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
-import type { DbOrTx } from '../db/client'
-import { refreshTokens, sessions } from '../db/schema'
-import type { AppDeps } from '../deps'
-import { randomToken, sha256 } from './crypto'
+import type { DbOrTx } from '../db/client.js'
+import { refreshTokens, sessions } from '../db/schema.js'
+import type { AppDeps } from '../deps.js'
+import { randomToken, sha256 } from './crypto.js'
 
 export type RevokeReason = 'logout' | 'inactive' | 'expired' | 'refresh_reuse' | 'password_reset'
 

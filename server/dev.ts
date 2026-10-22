@@ -5,11 +5,11 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { serve } from '@hono/node-server'
-import { createApp } from './app'
-import { loadConfig } from './config'
-import { createPgliteDb } from './db/client'
-import { createLogger } from './logger'
-import { DevOutboxMailer } from './mail/mailer'
+import { createApp } from './app.js'
+import { loadConfig } from './config.js'
+import { createPgliteDb } from './db/client.js'
+import { createLogger } from './logger.js'
+import { DevOutboxMailer } from './mail/mailer.js'
 
 if (existsSync('.env.local')) process.loadEnvFile('.env.local')
 

@@ -13,7 +13,7 @@ npm run dev      # app http://127.0.0.1:5173 + API :8787 (local Postgres in .dat
 npm test         # Vitest + Testing Library + axe accessibility checks
 npm run build    # type-check and production build
 npm run lint     # oxlint
-npm run db:migrate  # apply migrations to DATABASE_URL (production database; run deliberately)
+npm run db:migrate  # apply migrations to DATABASE_URL (Vercel runs this in every deploy's build)
 ```
 
 ## Structure

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq, isNull } from 'drizzle-orm'
-import type { ApiUser } from '../../src/shared/schemas'
-import { refreshTokens, sessions, users } from '../db/schema'
-import type { AppDeps } from '../deps'
-import { randomToken, sha256 } from './crypto'
-import { revokeSession, type NewSession } from './sessions'
+import type { ApiUser } from '../../src/shared/schemas.js'
+import { refreshTokens, sessions, users } from '../db/schema.js'
+import type { AppDeps } from '../deps.js'
+import { randomToken, sha256 } from './crypto.js'
+import { revokeSession, type NewSession } from './sessions.js'
 
 /** Why a refresh was refused; logged so a failed refresh can be explained later. */
 export type RefreshFailure = 'unknown_token' | 'revoked' | 'reuse' | 'expired' | 'inactive'

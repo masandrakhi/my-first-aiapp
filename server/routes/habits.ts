@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { dateKeySchema, habitDraftSchema, habitPatchSchema, importSchema, reorderSchema, settingsPatchSchema } from '../../src/shared/schemas'
-import { HttpError, notFound, unauthorized } from '../errors'
-import { jsonBody, requireAuth, type AppContext, type AppEnv } from '../middleware'
-import * as repo from '../repo/habits'
+import { dateKeySchema, habitDraftSchema, habitPatchSchema, importSchema, reorderSchema, settingsPatchSchema } from '../../src/shared/schemas.js'
+import { HttpError, notFound, unauthorized } from '../errors.js'
+import { jsonBody, requireAuth, type AppContext, type AppEnv } from '../middleware.js'
+import * as repo from '../repo/habits.js'
 
 /** All routes here require a live session; the user id always comes from it, never from the request. */
 export const dataRoutes = new Hono<AppEnv>()

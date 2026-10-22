@@ -6,7 +6,7 @@ import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless'
 import { drizzle as drizzlePglite } from 'drizzle-orm/pglite'
 import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator'
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
-import * as schema from './schema'
+import * as schema from './schema.js'
 
 /** Any Postgres-backed Drizzle database with our schema (Neon in production, PGlite locally and in tests). */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>

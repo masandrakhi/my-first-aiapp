@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm'
-import { rateLimits } from '../db/schema'
-import type { AppDeps } from '../deps'
-import { HOUR, MINUTE } from '../config'
-import { hmacKey } from './crypto'
+import { rateLimits } from '../db/schema.js'
+import type { AppDeps } from '../deps.js'
+import { HOUR, MINUTE } from '../config.js'
+import { hmacKey } from './crypto.js'
 
 export interface Limit {
   name: string

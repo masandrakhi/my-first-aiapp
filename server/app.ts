@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import type { AppDeps } from './deps'
-import { HttpError } from './errors'
-import { errorResponse, originCheck, requestId, requestLog, type AppEnv } from './middleware'
-import { authRoutes } from './routes/auth'
-import { dataRoutes } from './routes/habits'
+import type { AppDeps } from './deps.js'
+import { HttpError } from './errors.js'
+import { errorResponse, originCheck, requestId, requestLog, type AppEnv } from './middleware.js'
+import { authRoutes } from './routes/auth.js'
+import { dataRoutes } from './routes/habits.js'
 
 /** Builds the API. Everything external (database, clock, mailer, config) is injected. */
 export function createApp(deps: AppDeps) {

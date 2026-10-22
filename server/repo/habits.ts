@@ -4,13 +4,13 @@
  */
 import { randomUUID } from 'node:crypto'
 import { and, asc, eq, inArray, max, sql } from 'drizzle-orm'
-import type { AppData, Completions, Habit } from '../../src/types'
-import { colorAt, HABIT_COLORS } from '../../src/lib/palette'
-import { parseData } from '../../src/lib/appData'
-import { dateKeySchema, NAME_MAX, type ApiUser, type HabitDraft, type HabitsPayload } from '../../src/shared/schemas'
-import type { DbOrTx } from '../db/client'
-import { completions, habits, imports, users, userSettings } from '../db/schema'
-import type { AuthedUserId } from '../middleware'
+import type { AppData, Completions, Habit } from '../../src/types.js'
+import { colorAt, HABIT_COLORS } from '../../src/lib/palette.js'
+import { parseData } from '../../src/lib/appData.js'
+import { dateKeySchema, NAME_MAX, type ApiUser, type HabitDraft, type HabitsPayload } from '../../src/shared/schemas.js'
+import type { DbOrTx } from '../db/client.js'
+import { completions, habits, imports, users, userSettings } from '../db/schema.js'
+import type { AuthedUserId } from '../middleware.js'
 
 type HabitRow = typeof habits.$inferSelect
 type Settings = AppData['settings']

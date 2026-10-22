@@ -28,7 +28,7 @@ Actors: the **User**, who tracks their own habits from any browser after signing
 | UC-18 | Switch theme | User | Theme icon | system → light → dark; saved to the account and applied before first paint on this device |
 | UC-19 | Use it on any device | User | Sign in on phone or desktop | Same habits everywhere; nothing about habits is stored in the browser |
 | UC-20 | Use it with assistive tech | User | Keyboard or screen reader | WCAG 2.2 AA: labels, focus ring, skip link, live announcements, accessible sign-in form |
-| UC-21 | Release a new version | Maintainer | Build and test → owner approves → deploy | Deploys only after explicit approval; free plans only; database migrations run deliberately |
+| UC-21 | Release a new version | Maintainer | Build and test → owner approves → deploy | Deploys only after explicit approval; free plans only; database migrations run in the deploy's build, and a failed migration fails the deploy |
 
 ## 2. Introduction and overview
 
@@ -118,7 +118,7 @@ Every row of user data carries `user_id`. Completions also have a composite fore
 
 **Device storage (browser).** Only `habits:theme` (for first paint) and `habits:device-id` (import idempotency). Legacy `habit-tracker:v1` data from v1 is read once for the import prompt and deleted after a successful import.
 
-**Migrations.** Drizzle generates SQL into `server/db/migrations`; `npm run db:migrate` applies them to the database in `DATABASE_URL`, only when run deliberately.
+**Migrations.** Drizzle generates SQL into `server/db/migrations`; `npm run db:migrate` applies them to the database in `DATABASE_URL`. Vercel runs it in every deployment's build (`buildCommand` in `vercel.json`), because the database secrets are only readable there; a failed migration fails the deploy, and already-applied migrations are skipped. Preview deployments migrate their own isolated database copy.
 
 ## 5. Interface design
 

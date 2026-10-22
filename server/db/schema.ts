@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   boolean, customType, date, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid,
 } from 'drizzle-orm/pg-core'
-import type { Frequency, Theme } from '../../src/types'
+import type { Frequency, Theme } from '../../src/types.js'
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' })
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })

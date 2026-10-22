@@ -2,8 +2,8 @@
  * Pure helpers for the AppData format, with no browser APIs, so the API server can reuse them
  * (for example to validate a device's legacy data during import).
  */
-import type { AppData, Completions, Frequency, Habit } from '../types'
-import { migrateColor } from './palette'
+import type { AppData, Completions, Frequency, Habit } from '../types.js'
+import { migrateColor } from './palette.js'
 
 export function defaultData(): AppData {
   return { version: 1, habits: [], completions: {}, settings: { theme: 'system', collapseDone: true } }

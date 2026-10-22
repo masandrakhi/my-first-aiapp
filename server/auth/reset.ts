@@ -1,10 +1,10 @@
 import { and, eq, gt, isNull } from 'drizzle-orm'
-import { passwordResets, users } from '../db/schema'
-import type { AppDeps } from '../deps'
-import { HttpError, invalidResetLink } from '../errors'
-import { randomToken, sha256 } from './crypto'
-import { hashPassword, passwordProblem } from './password'
-import { revokeAllSessions } from './sessions'
+import { passwordResets, users } from '../db/schema.js'
+import type { AppDeps } from '../deps.js'
+import { HttpError, invalidResetLink } from '../errors.js'
+import { randomToken, sha256 } from './crypto.js'
+import { hashPassword, passwordProblem } from './password.js'
+import { revokeAllSessions } from './sessions.js'
 
 /**
  * Emails a single-use, 30-minute reset link if the account exists. The caller always answers

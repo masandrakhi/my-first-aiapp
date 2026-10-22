@@ -1,4 +1,4 @@
-import type { ApiErrorCode } from '../src/shared/schemas'
+import type { ApiErrorCode } from '../src/shared/schemas.js'
 
 /** An error that maps directly to a JSON API response. `message` must be safe to show users. */
 export class HttpError extends Error {

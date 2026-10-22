@@ -3,8 +3,8 @@
  * The server is the authority: the client uses these only for friendly, early error messages.
  */
 import { z } from 'zod'
-import { HABIT_COLORS } from '../lib/palette'
-import type { AppData } from '../types'
+import { HABIT_COLORS } from '../lib/palette.js'
+import type { AppData } from '../types.js'
 
 export const NAME_MAX = 40
 export const PASSWORD_MIN = 12

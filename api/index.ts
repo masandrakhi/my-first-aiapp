@@ -2,11 +2,11 @@
  * Vercel Function entry (Node.js runtime). vercel.json rewrites every /api/* request here.
  * Configuration comes from Vercel project environment variables; missing secrets fail fast.
  */
-import { createApp } from '../server/app'
-import { loadConfig } from '../server/config'
-import { createNeonDb } from '../server/db/client'
-import { createLogger } from '../server/logger'
-import { ResendMailer, type Mailer } from '../server/mail/mailer'
+import { createApp } from '../server/app.js'
+import { loadConfig } from '../server/config.js'
+import { createNeonDb } from '../server/db/client.js'
+import { createLogger } from '../server/logger.js'
+import { ResendMailer, type Mailer } from '../server/mail/mailer.js'
 
 const env = process.env
 if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set')

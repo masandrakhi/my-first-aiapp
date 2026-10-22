@@ -1,7 +1,7 @@
-import type { Config } from './config'
-import type { Db } from './db/client'
-import type { Logger } from './logger'
-import type { Mailer } from './mail/mailer'
+import type { Config } from './config.js'
+import type { Db } from './db/client.js'
+import type { Logger } from './logger.js'
+import type { Mailer } from './mail/mailer.js'
 
 /** Everything the API needs, injected so tests can swap in an in-memory database, fake clock and mailer. */
 export interface AppDeps {
