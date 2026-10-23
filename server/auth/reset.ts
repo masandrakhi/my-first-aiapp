@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from 'drizzle-orm'
 import { passwordResets, users } from '../db/schema.js'
 import type { AppDeps } from '../deps.js'
-import { HttpError, invalidResetLink } from '../errors.js'
+import { HttpError } from '../errors.js'
 import { randomToken, sha256 } from './crypto.js'
 import { hashPassword, passwordProblem } from './password.js'
 import { revokeAllSessions } from './sessions.js'
@@ -15,8 +15,8 @@ export async function requestPasswordReset(deps: AppDeps, email: string): Promis
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email))
   if (!user) return { userId: null, emailSent: false }
   const at = now()
-  // Only the newest link works: earlier unused ones are retired.
-  await db.update(passwordResets).set({ usedAt: at }).where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.usedAt)))
+  // Earlier unused links stay valid until they expire: people often ask twice and open the first email.
+  // Using any one of them retires all the others (completePasswordReset), so each is still single-use.
   const token = randomToken()
   await db.insert(passwordResets).values({
     userId: user.id,
@@ -39,6 +39,17 @@ export async function requestPasswordReset(deps: AppDeps, email: string): Promis
   }
 }
 
+/** Why a reset link was refused, for the security log (never shown to the user, never the link itself). */
+export type ResetFailure = 'unknown' | 'used' | 'expired'
+
+export class ResetLinkError extends HttpError {
+  readonly reason: ResetFailure
+  constructor(reason: ResetFailure) {
+    super(400, 'invalid_reset_link', 'This reset link is invalid or has expired. Request a new one.')
+    this.reason = reason
+  }
+}
+
 /** Sets a new password from a valid reset link, then signs the user out on every device. */
 export async function completePasswordReset(deps: AppDeps, token: string, newPassword: string): Promise<string> {
   const { db, now, mailer, logger } = deps
@@ -48,7 +59,13 @@ export async function completePasswordReset(deps: AppDeps, token: string, newPas
     .from(passwordResets)
     .innerJoin(users, eq(users.id, passwordResets.userId))
     .where(and(eq(passwordResets.tokenHash, sha256(token)), isNull(passwordResets.usedAt), gt(passwordResets.expiresAt, at)))
-  if (!reset) throw invalidResetLink()
+  if (!reset) {
+    const [known] = await db
+      .select({ usedAt: passwordResets.usedAt })
+      .from(passwordResets)
+      .where(eq(passwordResets.tokenHash, sha256(token)))
+    throw new ResetLinkError(!known ? 'unknown' : known.usedAt ? 'used' : 'expired')
+  }
 
   const problem = passwordProblem(newPassword, reset.email)
   if (problem) throw new HttpError(400, 'validation_error', problem, { fields: { newPassword: problem } })
@@ -61,7 +78,7 @@ export async function completePasswordReset(deps: AppDeps, token: string, newPas
       .set({ usedAt: at })
       .where(and(eq(passwordResets.id, reset.id), isNull(passwordResets.usedAt)))
       .returning({ id: passwordResets.id })
-    if (claimed.length === 0) throw invalidResetLink()
+    if (claimed.length === 0) throw new ResetLinkError('used')
     await tx.update(users).set({ passwordHash, passwordChangedAt: at }).where(eq(users.id, reset.userId))
     await tx.update(passwordResets).set({ usedAt: at }).where(and(eq(passwordResets.userId, reset.userId), isNull(passwordResets.usedAt)))
     await revokeAllSessions(tx, reset.userId, at, 'password_reset')

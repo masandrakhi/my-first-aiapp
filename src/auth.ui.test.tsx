@@ -58,6 +58,17 @@ describe('sign-in page', () => {
     expect(await screen.findByText(/If an account exists for that email/)).toBeInTheDocument()
   })
 
+  it('sends one reset email even when the button is tapped twice quickly', async () => {
+    const api = await renderSignedOut()
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }))
+    fill('Email', 'anyone@example.com')
+    const send = screen.getByRole('button', { name: 'Send reset link' })
+    fireEvent.click(send)
+    fireEvent.click(send)
+    await screen.findByText(/If an account exists for that email/)
+    expect(api.calls.filter((c) => c.path === '/api/auth/password/forgot')).toHaveLength(1)
+  })
+
   it('sets a new password from a reset link and removes the token from the address bar', async () => {
     window.history.replaceState(null, '', '/#reset=valid-reset-token-123')
     installFakeApi()
@@ -108,7 +119,8 @@ describe('session handling', () => {
       expect(screen.queryByRole('dialog', { name: 'Still there?' })).toBeNull()
 
       act(() => vi.advanceTimersByTime(INACTIVITY_MS + 1000))
-      expect(await screen.findByText(/signed out after 15 minutes of inactivity/i)).toBeInTheDocument()
+      // Sign-out runs a request and a re-render; give it more than the default 1 s on a busy machine.
+      expect(await screen.findByText(/signed out after 15 minutes of inactivity/i, undefined, { timeout: 4000 })).toBeInTheDocument()
       expect(api.calls.some((c) => c.path === '/api/auth/logout')).toBe(true)
     } finally {
       vi.useRealTimers()

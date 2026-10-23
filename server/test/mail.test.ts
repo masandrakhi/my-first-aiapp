@@ -26,7 +26,7 @@ describe('choosing the email provider', () => {
     expect(provider).toBe('smtp')
     expect(settings.value).toEqual({ host: 'smtp.gmail.com', port: 465, user: 'me@gmail.com', pass: 'abcdefghijklmnop' })
     await mailer.send({ to: 'user@example.com', subject: 'Reset', text: 'link' })
-    expect(sent).toEqual([{ from: 'Habits <me@gmail.com>', to: 'user@example.com', subject: 'Reset', text: 'link' }])
+    expect(sent).toEqual([{ from: 'Habits <me@gmail.com>', to: 'user@example.com', subject: 'Reset', text: 'link', textEncoding: 'base64' }])
   })
 
   it('honours SMTP_HOST, SMTP_PORT and MAIL_FROM overrides', () => {

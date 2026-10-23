@@ -60,7 +60,7 @@ export interface SmtpSettings {
 
 /** The one call SmtpMailer needs from a nodemailer transport (a fake in tests). */
 export interface SmtpTransport {
-  sendMail(mail: { from: string; to: string; subject: string; text: string }): Promise<unknown>
+  sendMail(mail: { from: string; to: string; subject: string; text: string; textEncoding: 'base64' }): Promise<unknown>
 }
 
 /** Production alternative to Resend: sends through an SMTP server such as Gmail (with an App Password). */
@@ -79,6 +79,7 @@ export class SmtpMailer implements Mailer {
   }
 
   async send(message: MailMessage) {
-    await this.transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text })
+    // base64 rather than quoted-printable, so long links are never split by soft line breaks.
+    await this.transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text, textEncoding: 'base64' })
   }
 }

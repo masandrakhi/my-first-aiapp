@@ -9,7 +9,7 @@ import { sha256 } from '../auth/crypto.js'
 import { dummyHash, hashPassword, needsRehash, passwordProblem, verifyPassword } from '../auth/password.js'
 import { clear, consume, LIMITS, peek, type Limit } from '../auth/rateLimit.js'
 import { rotateRefreshToken } from '../auth/refresh.js'
-import { completePasswordReset, requestPasswordReset } from '../auth/reset.js'
+import { completePasswordReset, requestPasswordReset, ResetLinkError } from '../auth/reset.js'
 import { createSession, revokeSession, type NewSession } from '../auth/sessions.js'
 import { signAccessToken, verifyAccessToken } from '../auth/tokens.js'
 
@@ -187,7 +187,8 @@ authRoutes.post('/password/reset', async (c) => {
     const userId = await completePasswordReset(deps, token, newPassword)
     audit(c, 'password_reset_completed', { userId, allSessionsRevoked: true })
   } catch (err) {
-    if (err instanceof HttpError) audit(c, 'password_reset_failed', { reason: err.code })
+    if (err instanceof ResetLinkError) audit(c, 'password_reset_failed', { reason: err.code, linkState: err.reason })
+    else if (err instanceof HttpError) audit(c, 'password_reset_failed', { reason: err.code })
     throw err
   }
   return c.body(null, 204)

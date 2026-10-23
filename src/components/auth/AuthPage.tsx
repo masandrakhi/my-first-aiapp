@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 import type { ZodType } from 'zod'
@@ -44,6 +44,8 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
   const [formError, setFormError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(notice ? NOTICES[notice] : null)
   const [busy, setBusy] = useState(false)
+  // `busy` disables the button only after a re-render; this also stops a fast double tap (two emails).
+  const inFlight = useRef(false)
 
   const switchTo = (next: Mode) => {
     setMode(next)
@@ -89,8 +91,9 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
       : mode === 'register' ? check({ email: [emailSchema, email], password: [passwordSchema, password], ...(name.trim() ? { name: [displayNameSchema, name] } : {}) })
       : mode === 'forgot' ? check({ email: [emailSchema, email] })
       : check({ password: [passwordSchema, password] })
-    if (!ok) return
+    if (!ok || inFlight.current) return
 
+    inFlight.current = true
     setBusy(true)
     try {
       if (mode === 'signin') await auth.signIn(email, password)
@@ -109,6 +112,7 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
         setFormError("Couldn't reach the server. Check your connection and try again.")
       }
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }

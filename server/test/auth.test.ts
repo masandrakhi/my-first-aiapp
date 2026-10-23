@@ -224,6 +224,43 @@ describe('password reset', () => {
     expect(again.body.error.code).toBe('invalid_reset_link')
   })
 
+  it('keeps an earlier link valid after a second request, and using either retires the other', async () => {
+    const e = email()
+    await new Client(h).register(e)
+    const linkFrom = () => h.mailer.sent.at(-1)!.text.match(/#reset=([\w-]+)/)![1]!
+    await new Client(h).req('POST', '/api/auth/password/forgot', { email: e })
+    const first = linkFrom()
+    await new Client(h).req('POST', '/api/auth/password/forgot', { email: e })
+    const second = linkFrom()
+    expect(second).not.toBe(first)
+
+    // People often open the first email: it still works.
+    const reset = await new Client(h).req('POST', '/api/auth/password/reset', { token: first, newPassword: 'a brand new passphrase' })
+    expect(reset.status).toBe(204)
+    // ...and the second link is now retired, so a forwarded or leaked copy is useless.
+    const later = await new Client(h).req('POST', '/api/auth/password/reset', { token: second, newPassword: 'yet another passphrase' })
+    expect(later.body.error.code).toBe('invalid_reset_link')
+  })
+
+  it('logs why a reset link was refused, never the link', async () => {
+    const e = email()
+    await new Client(h).register(e)
+    await new Client(h).req('POST', '/api/auth/password/forgot', { email: e })
+    const link = h.mailer.sent.at(-1)!.text.match(/#reset=([\w-]+)/)![1]!
+    const refusals = () => h.logs.map((l) => JSON.parse(l)).filter((l) => l.event === 'password_reset_failed').map((l) => l.linkState)
+
+    await new Client(h).req('POST', '/api/auth/password/reset', { token: 'x'.repeat(43), newPassword: 'a brand new passphrase' })
+    await new Client(h).req('POST', '/api/auth/password/reset', { token: link, newPassword: 'a brand new passphrase' })
+    await new Client(h).req('POST', '/api/auth/password/reset', { token: link, newPassword: 'another passphrase here' })
+    await new Client(h).req('POST', '/api/auth/password/forgot', { email: e })
+    const stale = h.mailer.sent.at(-1)!.text.match(/#reset=([\w-]+)/)![1]!
+    h.clock.advance(31 * MINUTE)
+    await new Client(h).req('POST', '/api/auth/password/reset', { token: stale, newPassword: 'a brand new passphrase' })
+
+    expect(refusals().slice(-3)).toEqual(['unknown', 'used', 'expired'])
+    expect(h.logs.join('\n')).not.toContain(link)
+  })
+
   it('rejects expired reset links', async () => {
     const e = email()
     await new Client(h).register(e)
