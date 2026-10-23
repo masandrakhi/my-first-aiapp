@@ -81,7 +81,7 @@ export class Client {
   }
 
   async register(email: string, password = 'correct horse battery', name?: string) {
-    const res = await this.req('POST', '/api/auth/register', { email, password, ...(name ? { name } : {}) })
+    const res = await this.req('POST', '/api/auth/register', { email, password, ageConfirmed: true, ...(name ? { name } : {}) })
     if (res.status === 201) this.token = res.body.accessToken
     return res
   }

@@ -88,7 +88,7 @@ describe('per-user data isolation', () => {
       settings: { theme: 'dark' },
     }
     const first = await bob.req('POST', '/api/import', { deviceImportId: 'device-1234', data: legacy })
-    expect(first.body).toEqual({ imported: 1, alreadyImported: false })
+    expect(first.body).toEqual({ imported: 1, skipped: 0, alreadyImported: false })
     const again = await bob.req('POST', '/api/import', { deviceImportId: 'device-1234', data: legacy })
     expect(again.body.alreadyImported).toBe(true)
 
@@ -116,7 +116,7 @@ describe('per-user data isolation', () => {
       completions: { a: ['2026-10-20'], b: ['2026-10-19', '2026-10-21'] },
       settings: { theme: 'system' },
     }
-    expect((await carol.req('POST', '/api/import', { deviceImportId: 'device-5678', data: legacy })).body).toEqual({ imported: 2, alreadyImported: false })
+    expect((await carol.req('POST', '/api/import', { deviceImportId: 'device-5678', data: legacy })).body).toEqual({ imported: 2, skipped: 0, alreadyImported: false })
     const view = (await carol.req('GET', '/api/habits')).body
     expect(view.habits.map((x: { name: string; order: number }) => [x.name, x.order])).toEqual([['Existing', 0], ['First', 1], ['Second', 2]])
     expect(view.completions[view.habits[1].id]).toEqual(['2026-10-20'])

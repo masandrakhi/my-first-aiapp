@@ -14,6 +14,8 @@ export interface FakeApi {
   expireSessions: () => void
   /** Makes the next save fail with a 500, to exercise the error path. */
   failNextWrite: () => void
+  /** Makes the next habit create fail the server's content policy (the real check is tested in server/test). */
+  rejectNextHabitAsUnsafe: () => void
   calls: { method: string; path: string }[]
   stores: Map<string, Store>
 }
@@ -25,6 +27,7 @@ export function installFakeApi(): FakeApi {
   let cookie: string | null = null // refresh "cookie" → user id
   const refresh = new Map<string, string>()
   let failWrite = false
+  let unsafeNext = false
   let n = 0
   const calls: FakeApi['calls'] = []
 
@@ -50,6 +53,7 @@ export function installFakeApi(): FakeApi {
     const uid = auth ? tokens.get(auth) : undefined
 
     if (path === '/api/auth/register') {
+      if (body.ageConfirmed !== true) return error(400, 'validation_error', 'Please check the highlighted fields.', { ageConfirmed: 'You must be 13 or older to use Habits' })
       if (String(body.password).length < 12) return error(400, 'validation_error', 'Please check the highlighted fields.', { password: 'Use at least 12 characters' })
       if ([...users.values()].some((u) => u.email === body.email)) return error(409, 'conflict', "We couldn't create an account with that email.")
       const user = { id: `user-${++n}`, email: body.email, name: body.name ?? null, password: body.password }
@@ -85,6 +89,10 @@ export function installFakeApi(): FakeApi {
 
     if (path === '/api/habits' && method === 'GET') return json(200, { habits: store.habits, completions: store.completions, settings: store.settings })
     if (path === '/api/habits' && method === 'POST') {
+      if (unsafeNext) {
+        unsafeNext = false
+        return error(400, 'unsafe_content', "That habit can't be saved because it includes content we don't allow.", { name: "That habit can't be saved." })
+      }
       const habit: Habit = { id: crypto.randomUUID(), ...body, frequency: { type: 'daily' }, createdAt: new Date().toISOString(), archived: false, order: store.habits.length }
       store.habits.push(habit)
       return json(201, habit)
@@ -105,7 +113,7 @@ export function installFakeApi(): FakeApi {
         store.habits.push({ ...h, id, order: store.habits.length })
         store.completions[id] = [...(data.completions[h.id] ?? [])]
       }
-      return json(200, { imported: data.habits.length, alreadyImported: false })
+      return json(200, { imported: data.habits.length, skipped: 0, alreadyImported: false })
     }
     const done = /^\/api\/habits\/([^/]+)\/completions\/(\d{4}-\d{2}-\d{2})$/.exec(path)
     if (done) {
@@ -136,6 +144,9 @@ export function installFakeApi(): FakeApi {
     },
     failNextWrite: () => {
       failWrite = true
+    },
+    rejectNextHabitAsUnsafe: () => {
+      unsafeNext = true
     },
     calls,
     stores,

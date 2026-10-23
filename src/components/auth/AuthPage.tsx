@@ -5,7 +5,7 @@ import type { ZodType } from 'zod'
 import { ApiError } from '../../auth/apiClient'
 import { logError, refSuffix } from '../../lib/log'
 import { useAuth, type SignInNotice } from '../../auth/authContext'
-import { emailSchema, displayNameSchema, passwordSchema, PASSWORD_MIN } from '../../shared/schemas'
+import { AGE_MESSAGE, emailSchema, displayNameSchema, MIN_AGE, passwordSchema, PASSWORD_MIN } from '../../shared/schemas'
 import { BrandMark } from '../BrandMark'
 
 type Mode = 'signin' | 'register' | 'forgot' | 'reset'
@@ -40,6 +40,7 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [ageConfirmed, setAgeConfirmed] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(notice ? NOTICES[notice] : null)
@@ -72,8 +73,8 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
   }, [])
 
   /** Friendly, early checks with the same rules the server enforces; the server still decides. */
-  const check = (fields: Record<string, [ZodType, unknown]>) => {
-    const errors: Record<string, string> = {}
+  const check = (fields: Record<string, [ZodType, unknown]>, extra: Record<string, string> = {}) => {
+    const errors: Record<string, string> = { ...extra }
     for (const [key, [schema, value]] of Object.entries(fields)) {
       const result = schema.safeParse(value)
       if (!result.success) errors[key] = result.error.issues[0]?.message ?? 'Invalid value'
@@ -88,7 +89,7 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
     setInfo(null)
     const ok =
       mode === 'signin' ? check({ email: [emailSchema, email] })
-      : mode === 'register' ? check({ email: [emailSchema, email], password: [passwordSchema, password], ...(name.trim() ? { name: [displayNameSchema, name] } : {}) })
+      : mode === 'register' ? check({ email: [emailSchema, email], password: [passwordSchema, password], ...(name.trim() ? { name: [displayNameSchema, name] } : {}) }, ageConfirmed ? {} : { ageConfirmed: AGE_MESSAGE })
       : mode === 'forgot' ? check({ email: [emailSchema, email] })
       : check({ password: [passwordSchema, password] })
     if (!ok || inFlight.current) return
@@ -97,7 +98,7 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
     setBusy(true)
     try {
       if (mode === 'signin') await auth.signIn(email, password)
-      else if (mode === 'register') await auth.register(email, password, name.trim() || undefined)
+      else if (mode === 'register') await auth.register(email, password, ageConfirmed, name.trim() || undefined)
       else if (mode === 'forgot') setInfo(await auth.requestReset(email))
       else if (resetToken) await auth.resetPassword(resetToken, password)
     } catch (err) {
@@ -161,6 +162,8 @@ export function AuthPage({ notice }: { notice: SignInNotice | null }) {
             />
           )}
 
+          {mode === 'register' && <AgeCheckbox checked={ageConfirmed} onChange={setAgeConfirmed} error={fieldErrors.ageConfirmed} />}
+
           <button
             type="submit"
             disabled={busy}
@@ -212,6 +215,27 @@ function Field({ label, hint, error, children }: FieldProps) {
       </label>
       {children({ id, className: clsx(INPUT, error && 'ring-2 ring-rose-600'), 'aria-invalid': Boolean(error), 'aria-describedby': describedBy })}
       {hint && !error && <p id={`${id}-hint`} className="mt-1 text-xs text-stone-600 dark:text-stone-400">{hint}</p>}
+      {error && <p id={`${id}-error`} className="mt-1 text-xs font-medium text-rose-700 dark:text-rose-300">{error}</p>}
+    </div>
+  )
+}
+
+function AgeCheckbox({ checked, onChange, error }: { checked: boolean; onChange: (checked: boolean) => void; error?: string }) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="flex items-start gap-3 text-sm text-stone-700 dark:text-stone-300">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className="mt-0.5 size-5 shrink-0 accent-accent-600"
+        />
+        <span>I'm {MIN_AGE} or older</span>
+      </label>
       {error && <p id={`${id}-error`} className="mt-1 text-xs font-medium text-rose-700 dark:text-rose-300">{error}</p>}
     </div>
   )

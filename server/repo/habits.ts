@@ -68,6 +68,12 @@ export async function listAll(db: DbOrTx, uid: AuthedUserId): Promise<HabitsPayl
   return { habits: rows.map(toHabit), completions: byHabit, settings }
 }
 
+/** Just the names of this user's habits (for duplicate checks), without loading check-ins. */
+export async function listHabitNames(db: DbOrTx, uid: AuthedUserId): Promise<string[]> {
+  const rows = await db.select({ name: habits.name }).from(habits).where(eq(habits.userId, uid))
+  return rows.map((r) => r.name)
+}
+
 export async function createHabit(db: DbOrTx, uid: AuthedUserId, draft: HabitDraft, at: Date): Promise<Habit> {
   const [row] = await db
     .insert(habits)
@@ -130,20 +136,27 @@ const IMPORT_BATCH = 5000
  */
 export async function importLegacy(
   db: DbOrTx, uid: AuthedUserId, deviceImportId: string, payload: unknown, at: Date, latestDate: string,
-): Promise<{ imported: number; alreadyImported: boolean }> {
+  /** Content policy for each habit; rejected ones are skipped and counted. */
+  allowed: (name: string, emoji: string) => boolean,
+): Promise<{ imported: number; skipped: number; alreadyImported: boolean }> {
   const data = parseData(payload)
-  if (!data) return { imported: 0, alreadyImported: false }
+  if (!data) return { imported: 0, skipped: 0, alreadyImported: false }
   return db.transaction(async (tx) => {
     const claimed = await tx.insert(imports).values({ userId: uid, deviceImportId, createdAt: at }).onConflictDoNothing().returning()
-    if (claimed.length === 0) return { imported: 0, alreadyImported: true }
+    if (claimed.length === 0) return { imported: 0, skipped: 0, alreadyImported: true }
 
     const first = await nextSortOrder(tx, uid)
     const source = [...data.habits].sort((a, b) => a.order - b.order).slice(0, MAX_IMPORT_HABITS)
     const rows: (typeof habits.$inferInsert)[] = []
     const checkIns: (typeof completions.$inferInsert)[] = []
+    let skipped = 0
     for (const [i, h] of source.entries()) {
       const name = h.name.trim().slice(0, NAME_MAX)
       if (!name) continue
+      if (!allowed(name, h.emoji)) {
+        skipped++
+        continue
+      }
       // Server-chosen ids, so each habit's check-ins can be prepared before anything is written.
       const id = randomUUID()
       rows.push({
@@ -167,6 +180,6 @@ export async function importLegacy(
     for (let i = 0; i < checkIns.length; i += IMPORT_BATCH) {
       await tx.insert(completions).values(checkIns.slice(i, i + IMPORT_BATCH)).onConflictDoNothing()
     }
-    return { imported: rows.length, alreadyImported: false }
+    return { imported: rows.length, skipped, alreadyImported: false }
   })
 }

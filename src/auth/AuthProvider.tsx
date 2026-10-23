@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       state,
       api,
       signIn: async (email, password) => begin(await api.post<AuthResponse>('/api/auth/login', { email, password })),
-      register: async (email, password, name) =>
-        begin(await api.post<AuthResponse>('/api/auth/register', { email, password, ...(name ? { name } : {}) })),
+      register: async (email, password, ageConfirmed, name) =>
+        begin(await api.post<AuthResponse>('/api/auth/register', { email, password, ageConfirmed, ...(name ? { name } : {}) })),
       requestReset: async (email) => (await api.post<{ message: string }>('/api/auth/password/forgot', { email })).message,
       resetPassword: async (token, newPassword) => {
         await api.post('/api/auth/password/reset', { token, newPassword })

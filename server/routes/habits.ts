@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { dateKeySchema, habitDraftSchema, habitPatchSchema, importSchema, reorderSchema, settingsPatchSchema } from '../../src/shared/schemas.js'
 import { HttpError, notFound, unauthorized } from '../errors.js'
-import { jsonBody, requireAuth, type AppContext, type AppEnv } from '../middleware.js'
+import { audit, jsonBody, requireAuth, type AppContext, type AppEnv } from '../middleware.js'
+import { checkHabit, responses } from '../safety/index.js'
 import * as repo from '../repo/habits.js'
 
 /** All routes here require a live session; the user id always comes from it, never from the request. */
@@ -26,12 +27,23 @@ function checkInDate(c: AppContext): string {
   return date
 }
 
+/** Server-side content check for anything saved as a habit; the client is never trusted to filter. */
+function assertSafeHabit(c: AppContext, source: string, ...texts: (string | undefined)[]) {
+  const result = checkHabit(...texts.filter((t): t is string => t !== undefined))
+  if (result.ok === true) return // explicit form: Vercel's own type-check narrows only this way
+  audit(c, 'content_blocked', { category: result.category, source }, 'warn')
+  // Self-harm always comes with the crisis lines; other categories get the neutral refusal.
+  const message = result.category === 'self_harm' ? responses.HABIT_BLOCKED_SELF_HARM : responses.HABIT_BLOCKED
+  throw new HttpError(400, 'unsafe_content', message, { fields: { name: message } })
+}
+
 export const latestAllowedDate = (now: Date) => new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10)
 
 dataRoutes.get('/habits', async (c) => c.json(await repo.listAll(c.get('deps').db, c.get('userId'))))
 
 dataRoutes.post('/habits', async (c) => {
   const draft = habitDraftSchema.parse(await jsonBody(c))
+  assertSafeHabit(c, 'habit_create', draft.name, draft.emoji)
   return c.json(await repo.createHabit(c.get('deps').db, c.get('userId'), draft, c.get('deps').now()), 201)
 })
 
@@ -51,6 +63,7 @@ dataRoutes.get('/habits/:id', async (c) => {
 dataRoutes.patch('/habits/:id', async (c) => {
   const id = habitId(c)
   const patch = habitPatchSchema.parse(await jsonBody(c))
+  assertSafeHabit(c, 'habit_update', patch.name, patch.emoji)
   const habit = await repo.updateHabit(c.get('deps').db, c.get('userId'), id, patch, c.get('deps').now())
   if (!habit) throw notFound()
   return c.json(habit)
@@ -91,6 +104,8 @@ dataRoutes.post('/session/keepalive', (c) => c.body(null, 204))
 dataRoutes.post('/import', async (c) => {
   const { deviceImportId, data } = importSchema.parse(await jsonBody(c))
   const deps = c.get('deps')
-  const result = await repo.importLegacy(deps.db, c.get('userId'), deviceImportId, data, deps.now(), latestAllowedDate(deps.now()))
+  const allowed = (name: string, emoji: string) => checkHabit(name, emoji).ok
+  const result = await repo.importLegacy(deps.db, c.get('userId'), deviceImportId, data, deps.now(), latestAllowedDate(deps.now()), allowed)
+  if (result.skipped > 0) audit(c, 'content_blocked', { source: 'import', count: result.skipped }, 'warn')
   return c.json(result)
 })

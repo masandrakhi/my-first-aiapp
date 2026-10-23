@@ -14,7 +14,7 @@ export interface AuthApi {
   state: AuthState
   api: ApiClient
   signIn(email: string, password: string): Promise<void>
-  register(email: string, password: string, name?: string): Promise<void>
+  register(email: string, password: string, ageConfirmed: boolean, name?: string): Promise<void>
   requestReset(email: string): Promise<string>
   resetPassword(token: string, newPassword: string): Promise<void>
   signOut(): Promise<void>

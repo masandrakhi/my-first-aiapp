@@ -17,6 +17,7 @@ export async function renderSignedIn(email = 'me@example.com', name = 'Sam'): Pr
   fireEvent.change(screen.getByLabelText('First name'), { target: { value: name } })
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: email } })
   fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'correct horse battery' } })
+  fireEvent.click(screen.getByLabelText("I'm 13 or older"))
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
   await screen.findByRole('button', { name: /add your first habit/i })
   return api

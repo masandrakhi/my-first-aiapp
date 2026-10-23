@@ -24,10 +24,15 @@ export const passwordSchema = z
 
 export const displayNameSchema = z.string().trim().min(1).max(NAME_MAX)
 
+export const MIN_AGE = 13
+export const AGE_MESSAGE = `You must be ${MIN_AGE} or older to use Habits`
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   name: displayNameSchema.optional(),
+  /** The user confirmed they are 13 or older (children's online privacy rules). No birth date is stored. */
+  ageConfirmed: z.literal(true, AGE_MESSAGE),
 })
 
 /** Login never reveals the password policy; it only needs non-empty values within sane bounds. */
@@ -99,6 +104,8 @@ export interface AuthResponse {
 /** Machine-readable error codes; `message` is always safe to show to the user. */
 export type ApiErrorCode =
   | 'validation_error'
+  /** A habit's text broke the content policy; `message` explains it and is safe to show. */
+  | 'unsafe_content'
   | 'invalid_credentials'
   | 'rate_limited'
   | 'unauthorized'

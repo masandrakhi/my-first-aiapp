@@ -39,6 +39,36 @@ describe('sign-in page', () => {
     expect(screen.getByLabelText('New password')).toHaveAttribute('autocomplete', 'new-password')
   })
 
+  it('asks new users to confirm they are 13 or older before creating an account', async () => {
+    const api = await renderSignedOut()
+    fireEvent.click(screen.getByRole('button', { name: 'Create an account' }))
+    fill('Email', 'kid@example.com')
+    fill('New password', 'correct horse battery')
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    expect(await screen.findByText('You must be 13 or older to use Habits')).toBeInTheDocument()
+    expect(screen.getByLabelText("I'm 13 or older")).toHaveAttribute('aria-invalid', 'true')
+    expect(api.calls.filter((c) => c.path === '/api/auth/register')).toHaveLength(0)
+
+    fireEvent.click(screen.getByLabelText("I'm 13 or older"))
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    expect(await screen.findByRole('button', { name: /add your first habit/i })).toBeInTheDocument()
+  })
+
+  it('shows the content-policy message when a habit name is not allowed', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const api = await renderSignedIn()
+      api.rejectNextHabitAsUnsafe()
+      fireEvent.click(screen.getByRole('button', { name: /add your first habit/i }))
+      const dialog = screen.getByRole('dialog')
+      fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'k1ll' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Add habit' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent("can't be saved")
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('signs in and out again', async () => {
     await renderSignedIn('sam@example.com')
     fireEvent.click(screen.getByRole('button', { name: 'Account: sam@example.com' }))

@@ -63,7 +63,11 @@ export function HabitsProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) return
         logError(`saving failed: ${what}`, err)
-        setSyncError(`Couldn't save your last change${refSuffix(err)}. Showing your latest saved habits.`)
+        setSyncError(
+          err instanceof ApiError && err.code === 'unsafe_content'
+            ? err.message
+            : `Couldn't save your last change${refSuffix(err)}. Showing your latest saved habits.`,
+        )
         await reload()
       }
     })

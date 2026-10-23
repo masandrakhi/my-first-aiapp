@@ -43,6 +43,14 @@ describe('registration and login', () => {
     expect(common.body.error.code).toBe('validation_error')
   })
 
+  it('requires confirming the user is 13 or older, without storing a birth date', async () => {
+    const res = await new Client(h).req('POST', '/api/auth/register', { email: email(), password: 'correct horse battery' })
+    expect(res.status).toBe(400)
+    expect(res.body.error.fields.ageConfirmed).toMatch(/13 or older/)
+    const no = await new Client(h).req('POST', '/api/auth/register', { email: email(), password: 'correct horse battery', ageConfirmed: false })
+    expect(no.status).toBe(400)
+  })
+
   it('treats emails case-insensitively and refuses duplicates', async () => {
     const e = email()
     await new Client(h).register(e)
