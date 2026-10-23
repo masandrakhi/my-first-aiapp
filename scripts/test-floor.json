@@ -1,0 +1,4 @@
+{
+  "minPassed": 368,
+  "note": "Raise on purpose when adding tests; never lower it to make verify pass. The coach branch has more tests than main, so its floor is higher."
+}

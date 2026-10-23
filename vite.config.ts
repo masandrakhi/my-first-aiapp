@@ -14,5 +14,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Caps from EV-2 (docs/EVALS.md): long enough for a busy machine, short enough to expose real hangs.
+    // Raising them past 15 s per test or 30 s per setup hides problems instead of fixing them.
+    testTimeout: 15_000,
+    hookTimeout: 30_000,
   },
 })

@@ -114,9 +114,17 @@ describe('safety eval: end to end through the API', () => {
     expect(violent.body.error.message).toBe(responses.HABIT_BLOCKED)
   })
 
-  it('logs each refusal by category only, never the text', () => {
-    const blocked = h.logs.map((l) => JSON.parse(l)).filter((l) => l.event === 'safety_input_blocked').map((l) => l.category)
-    expect(blocked).toEqual(['violence', 'cyber', 'harassment'])
-    expect(h.logs.join('\n')).not.toMatch(/Malware|Weapon/)
+  it('logs each refusal by category only, never the text', async () => {
+    // Makes its own requests, so it passes in any test order.
+    const blocked = (event: string) => h.logs.map((l) => JSON.parse(l)).filter((l) => l.event === event).map((l) => l.category)
+    const habitsBefore = blocked('content_blocked').length
+    const chatBefore = blocked('safety_input_blocked').length
+    await me.req('POST', '/api/habits', { name: 'Suicide', emoji: '✨', color: '#059669' })
+    await me.req('POST', '/api/habits', { name: 'Malware', emoji: '✨', color: '#059669' })
+    await me.req('POST', '/api/chat/messages', { text: 'Weapon' })
+    await me.req('POST', '/api/chat/messages', { text: 'Dox' })
+    expect(blocked('content_blocked').slice(habitsBefore)).toEqual(['self_harm', 'cyber'])
+    expect(blocked('safety_input_blocked').slice(chatBefore)).toEqual(['violence', 'harassment'])
+    expect(h.logs.join('\n')).not.toMatch(/Overdose|Bomb|Suicide|Malware|Weapon|Dox/)
   })
 })
