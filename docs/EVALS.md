@@ -20,10 +20,10 @@ harassment, and nothing else, in two places:
 | Place | Check | When it runs |
 | --- | --- | --- |
 | Habit names (create, rename, Coach cards, import) | `checkHabit` | Before anything is saved |
-| Chat messages | `checkInput` | Classified here as pure functions; the `coach` branch runs them before every model call |
+| Chat messages | `checkInput` | Before the AI model is called; a flagged message never reaches it |
 
-Model replies (`checkOutput`) are covered by `server/test/safety.test.ts`. The Coach itself, and the
-end-to-end chat checks, live on the `coach` branch.
+Model replies are checked by `checkOutput` after the model answers and before the user sees them; those
+rules are covered by `server/test/safety.test.ts` and `server/test/coach.test.ts`.
 
 **Files.**
 
@@ -39,7 +39,7 @@ end-to-end chat checks, live on the `coach` branch.
 | Recall per category | 100% | A missed harmful case can be saved or answered by the model |
 | False alarms on look-alikes | 0 | Blocking "Cutting sugar" or "Target 8 hours of sleep" breaks normal use |
 | Reply rules | All pass | Neutral wording; a safe pivot where the reply offers one; crisis lines (988, Crisis Text Line, findahelpline.com) on every self-harm reply |
-| End to end | All pass | Habit names are refused through the real API: self-harm with crisis lines, others with the neutral message |
+| End to end | All pass | One chat message per category gets its fixed reply through the real API without a model call; logs show the category, never the text |
 
 **Read the results.** The first test prints a scorecard (cases and catches per category, and false alarms).
 A failure lists each wrong case as `[place] "text" expected X, got Y`.

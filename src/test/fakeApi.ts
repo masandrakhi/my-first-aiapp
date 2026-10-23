@@ -5,9 +5,17 @@
  */
 import { vi } from 'vitest'
 import type { AppData, Completions, Habit, Theme } from '../types'
+import type { CoachMessage, CoachProposal } from '../shared/chat'
 
 interface User { id: string; email: string; name: string | null; password: string }
-interface Store { habits: Habit[]; completions: Completions; settings: { theme: Theme; collapseDone: boolean } }
+interface Chat { id: string; messages: CoachMessage[] }
+interface Store { habits: Habit[]; completions: Completions; settings: { theme: Theme; collapseDone: boolean }; chat: Chat | null }
+
+/** The fake Coach always suggests these two (the real behaviour is tested in server/test/coach.test.ts). */
+const COACH_ITEMS = [
+  { itemId: 'item-1', name: 'Same bedtime every night', emoji: '🌙', color: '#7c3aed', why: 'A steady rhythm makes falling asleep easier.' },
+  { itemId: 'item-2', name: 'Phone out of the bedroom', emoji: '📵', color: '#e11d48', why: 'Less late-night scrolling.' },
+]
 
 export interface FakeApi {
   /** Ends every session on the "server", as if the user had been idle for 15 minutes. */
@@ -16,6 +24,8 @@ export interface FakeApi {
   failNextWrite: () => void
   /** Makes the next habit create fail the server's content policy (the real check is tested in server/test). */
   rejectNextHabitAsUnsafe: () => void
+  /** Makes the next Coach message fail as if the AI were unavailable (503). */
+  coachUnavailable: () => void
   calls: { method: string; path: string }[]
   stores: Map<string, Store>
 }
@@ -28,6 +38,7 @@ export function installFakeApi(): FakeApi {
   const refresh = new Map<string, string>()
   let failWrite = false
   let unsafeNext = false
+  let coachDown = false
   let n = 0
   const calls: FakeApi['calls'] = []
 
@@ -58,7 +69,7 @@ export function installFakeApi(): FakeApi {
       if ([...users.values()].some((u) => u.email === body.email)) return error(409, 'conflict', "We couldn't create an account with that email.")
       const user = { id: `user-${++n}`, email: body.email, name: body.name ?? null, password: body.password }
       users.set(user.id, user)
-      stores.set(user.id, { habits: [], completions: {}, settings: { theme: 'system', collapseDone: true } })
+      stores.set(user.id, { habits: [], completions: {}, settings: { theme: 'system', collapseDone: true }, chat: null })
       return json(201, session(user))
     }
     if (path === '/api/auth/login') {
@@ -106,6 +117,60 @@ export function installFakeApi(): FakeApi {
       return json(200, store.settings)
     }
     if (path === '/api/session/keepalive') return json(204)
+    if (path === '/api/chat' && method === 'GET') {
+      return json(200, { available: true, practice: true, conversationId: store.chat?.id ?? null, messages: store.chat?.messages ?? [] })
+    }
+    if (path === '/api/chat/messages') {
+      if (coachDown) {
+        coachDown = false
+        return error(503, 'unavailable', "The Coach can't reply right now. Please try again in a moment.")
+      }
+      const at = new Date().toISOString()
+      const added: CoachMessage[] = []
+      const push = (m: Omit<CoachMessage, 'id' | 'createdAt'>) => {
+        const message = { id: `msg-${++n}`, createdAt: at, ...m }
+        added.push(message)
+        store.chat!.messages.push(message)
+      }
+      if (!store.chat) {
+        store.chat = { id: `chat-${++n}`, messages: [] }
+        push({ role: 'assistant', text: "I'm an AI coach, not a person or a licensed professional.", kind: 'disclosure', proposal: null })
+      }
+      push({ role: 'user', text: body.text, kind: null, proposal: null })
+      const proposal: CoachProposal | null = /\b(add|create)\b/i.test(body.text)
+        ? { id: `proposal-${++n}`, status: 'pending', expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), items: COACH_ITEMS }
+        : null
+      push({
+        role: 'assistant',
+        text: proposal ? "I've put these below. Nothing is added until you tap Create." : 'Here are a few small habits that could help. Want me to add some?',
+        kind: null,
+        proposal,
+      })
+      return json(200, { conversationId: store.chat.id, practice: true, messages: added })
+    }
+    const chatAction = /^\/api\/chat\/(proposals|conversations)\/([^/]+)(?:\/(confirm|dismiss))?$/.exec(path)
+    if (chatAction) {
+      const [, kind, id, action] = chatAction
+      if (kind === 'conversations') {
+        if (store.chat?.id !== id) return error(404, 'not_found', 'Not found.')
+        store.chat = null
+        return json(204)
+      }
+      const message = store.chat?.messages.find((m) => m.proposal?.id === id)
+      if (!message?.proposal || message.proposal.status !== 'pending') return error(404, 'not_found', 'Not found.')
+      if (action === 'dismiss') {
+        message.proposal.status = 'dismissed'
+        return json(204)
+      }
+      const picked = message.proposal.items.filter((i) => (body.itemIds as string[]).includes(i.itemId))
+      message.proposal.status = 'confirmed'
+      const created = picked.map((i) => {
+        const habit: Habit = { id: crypto.randomUUID(), name: i.name, emoji: i.emoji, color: i.color, frequency: { type: 'daily' }, createdAt: new Date().toISOString(), archived: false, order: store.habits.length }
+        store.habits.push(habit)
+        return { id: habit.id, name: habit.name }
+      })
+      return json(200, { created, skipped: [] })
+    }
     if (path === '/api/import') {
       const data = body.data as AppData
       for (const h of data.habits) {
@@ -147,6 +212,9 @@ export function installFakeApi(): FakeApi {
     },
     rejectNextHabitAsUnsafe: () => {
       unsafeNext = true
+    },
+    coachUnavailable: () => {
+      coachDown = true
     },
     calls,
     stores,

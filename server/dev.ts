@@ -10,6 +10,8 @@ import { loadConfig } from './config.js'
 import { createPgliteDb } from './db/client.js'
 import { createLogger } from './logger.js'
 import { DevOutboxMailer } from './mail/mailer.js'
+import { AnthropicChatModel } from './chat/model.js'
+import { PracticeChatModel } from './chat/practiceModel.js'
 
 if (existsSync('.env.local')) process.loadEnvFile('.env.local')
 
@@ -25,8 +27,10 @@ const config = loadConfig({
 
 mkdirSync('.data', { recursive: true }) // PGlite creates its own folder, but not missing parents
 const db = await createPgliteDb('.data/pglite')
-const app = createApp({ db, config, mailer: new DevOutboxMailer('.data/outbox'), logger: createLogger(), now: () => new Date() })
+// The Coach uses Claude Haiku 5.5 only when a key is set in .env.local; otherwise the free practice stand-in.
+const chatModel = process.env.ANTHROPIC_API_KEY ? new AnthropicChatModel(process.env.ANTHROPIC_API_KEY) : new PracticeChatModel()
+const app = createApp({ db, config, mailer: new DevOutboxMailer('.data/outbox'), logger: createLogger(), now: () => new Date(), chatModel })
 
 serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 8787 }, ({ port }) => {
-  console.log(`API ready on http://127.0.0.1:${port} (database .data/pglite, emails .data/outbox)`)
+  console.log(`API ready on http://127.0.0.1:${port} (database .data/pglite, emails .data/outbox, Coach: ${chatModel.name})`)
 })

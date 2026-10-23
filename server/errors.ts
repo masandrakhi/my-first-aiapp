@@ -2,7 +2,7 @@ import type { ApiErrorCode } from '../src/shared/schemas.js'
 
 /** An error that maps directly to a JSON API response. `message` must be safe to show users. */
 export class HttpError extends Error {
-  readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500
+  readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 503
   readonly code: ApiErrorCode
   readonly fields?: Record<string, string>
   readonly retryAfterSec?: number

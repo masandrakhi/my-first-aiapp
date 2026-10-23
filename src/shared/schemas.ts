@@ -117,6 +117,8 @@ export type ApiErrorCode =
   | 'not_found'
   | 'conflict'
   | 'server_error'
+  /** A service the request needs (the Coach's AI) isn't available right now. */
+  | 'unavailable'
 
 export interface ApiErrorBody {
   /** `requestId` matches the X-Request-Id header and the server's log lines for this request. */

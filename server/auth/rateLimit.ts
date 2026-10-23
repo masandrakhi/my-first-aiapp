@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { rateLimits } from '../db/schema.js'
 import type { AppDeps } from '../deps.js'
-import { HOUR, MINUTE } from '../config.js'
+import { DAY, HOUR, MINUTE } from '../config.js'
 import { hmacKey } from './crypto.js'
 
 export interface Limit {
@@ -18,6 +18,11 @@ export const LIMITS = {
   forgotPerIp: { name: 'forgot-ip', max: 10, windowMs: HOUR },
   resetPerIp: { name: 'reset-ip', max: 10, windowMs: HOUR },
   refreshPerIp: { name: 'refresh-ip', max: 60, windowMs: 15 * MINUTE },
+  // The Coach (per user): chat volume, confirmations, and habits it may create in a day.
+  chatPerUser: { name: 'chat-user', max: 20, windowMs: 15 * MINUTE },
+  chatPerUserDay: { name: 'chat-user-day', max: 100, windowMs: DAY },
+  coachConfirmPerUser: { name: 'coach-confirm', max: 10, windowMs: HOUR },
+  coachHabitsPerDay: { name: 'coach-habits-day', max: 20, windowMs: DAY },
 } satisfies Record<string, Limit>
 
 export interface LimitState {
@@ -27,18 +32,18 @@ export interface LimitState {
 
 const keyFor = (deps: AppDeps, limit: Limit, subject: string) => `${limit.name}:${hmacKey(deps.config.ipHashSecret, subject)}`
 
-/** Counts one attempt in a fixed window and says whether it is still within the limit. */
-export async function consume(deps: AppDeps, limit: Limit, subject: string): Promise<LimitState> {
+/** Counts `amount` attempts (default one) in a fixed window and says whether it is still within the limit. */
+export async function consume(deps: AppDeps, limit: Limit, subject: string, amount = 1): Promise<LimitState> {
   const at = deps.now()
   const windowOpenedBefore = new Date(at.getTime() - limit.windowMs)
   const expired = sql`${rateLimits.windowStart} <= ${windowOpenedBefore}`
   const [row] = await deps.db
     .insert(rateLimits)
-    .values({ key: keyFor(deps, limit, subject), windowStart: at, count: 1 })
+    .values({ key: keyFor(deps, limit, subject), windowStart: at, count: amount })
     .onConflictDoUpdate({
       target: rateLimits.key,
       set: {
-        count: sql`case when ${expired} then 1 else ${rateLimits.count} + 1 end`,
+        count: sql`case when ${expired} then ${amount} else ${rateLimits.count} + ${amount} end`,
         windowStart: sql`case when ${expired} then ${at} else ${rateLimits.windowStart} end`,
       },
     })

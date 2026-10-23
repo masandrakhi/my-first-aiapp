@@ -4,6 +4,7 @@ import type { AppDeps } from './deps.js'
 import { HttpError } from './errors.js'
 import { errorResponse, originCheck, requestId, requestLog, type AppEnv } from './middleware.js'
 import { authRoutes } from './routes/auth.js'
+import { chatRoutes } from './routes/chat.js'
 import { dataRoutes } from './routes/habits.js'
 
 /** Builds the API. Everything external (database, clock, mailer, config) is injected. */
@@ -25,6 +26,7 @@ export function createApp(deps: AppDeps) {
   app.use('*', originCheck)
 
   app.route('/auth', authRoutes)
+  app.route('/chat', chatRoutes)
 
   app.route('/', dataRoutes)
 

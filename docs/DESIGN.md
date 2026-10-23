@@ -28,6 +28,10 @@ Actors: the **User**, who tracks their own habits from any browser after signing
 | UC-18 | Switch theme | User | Theme icon | system → light → dark; saved to the account and applied before first paint on this device |
 | UC-19 | Use it on any device | User | Sign in on phone or desktop | Same habits everywhere; nothing about habits is stored in the browser |
 | UC-20 | Use it with assistive tech | User | Keyboard or screen reader | WCAG 2.2 AA: labels, focus ring, skip link, live announcements, accessible sign-in form |
+| UC-22 | Get habit ideas from the AI Coach | User | Coach tab → describe a goal or problem in their own words (or tap a starter) → follow-up question or 2–3 suggestions from the curated list | Labelled as an AI, not a person or professional; replies are plain text; history stays on the server |
+| UC-23 | Add habits suggested by the Coach | User | Ask "add 2 of these" → card with ticked suggestions → untick any → Create N habits | Nothing is created until Create; the server re-checks owner, expiry (30 min), duplicates, content policy and limits; a double tap creates once |
+| UC-24 | Get support in a hard moment | User | Writes about self-harm or crisis | Fixed, supportive reply with crisis lines (988, Crisis Text Line, findahelpline.com); the model isn't called and no habits are suggested |
+| UC-25 | Clear the Coach chat | User | Clear chat | Conversation, messages and cards deleted at once (otherwise after 30 days of inactivity) |
 | UC-21 | Release a new version | Maintainer | Build and test → owner approves → deploy | Deploys only after explicit approval; free plans only; database migrations run in the deploy's build, and a failed migration fails the deploy |
 
 ## 2. Introduction and overview
@@ -139,6 +143,11 @@ Every row of user data carries `user_id`. Completions also have a composite fore
 | PUT · DELETE /api/habits/:id/completions/:date | Bearer | Check in / undo | 204 · 400 · 404 |
 | PUT /api/habits/order | Bearer | Reorder (must list exactly the caller's habits) | 204 · 400 |
 | POST /api/import | Bearer | One-time import of device data | 200 |
+| GET /api/chat | Bearer | Current Coach conversation, availability, practice mode | 200 |
+| POST /api/chat/messages | Bearer | Send a message (`text`, 1–1000 chars); returns the new messages | 200 · 400 · 429 · 503 `unavailable` |
+| DELETE /api/chat/conversations/:id | Bearer | Clear chat | 204 · 404 |
+| POST /api/chat/proposals/:id/confirm | Bearer | Create the ticked habits from a card (`itemIds`) | 200 `{created, skipped}` · 400 · 404 · 409 used/expired · 429 |
+| POST /api/chat/proposals/:id/dismiss | Bearer | "Not now" | 204 · 404 |
 
 Status codes: **401** missing, invalid or expired authentication (`token_expired` triggers one silent refresh); **404** for any habit that isn't the caller's (indistinguishable from a missing one); **403** failed origin check; **429** rate limited with `Retry-After`.
 
@@ -224,6 +233,36 @@ Today, Week, dialogs, motion and accessibility behaviour are unchanged from v1 (
 | Database or env misconfiguration at deploy | Low | High | Config validated at startup; separate Preview/Production databases | Deploy to Preview first, with approval |
 | Vulnerable dependency | Low | Medium | Lockfile; `npm audit` (0 vulnerabilities at writing) | Re-run before each release |
 | Unexpected hosting cost | Low | Medium | Free plans only; standing rule never to buy or upgrade | Check billing pages |
+| Coach manipulated by prompt injection | Medium | Medium | No write tools; user id bound on the server; validated inputs; confirmation via a separate authenticated request; output checks; tested | — |
+| Harmful habit or reply slips past the term lists | Low | High | Normalisation against disguises; input and output checks; model instructions as a second layer | Extend `terms.ts` as new cases appear; consider an AI moderation pass |
+| Coach model cost | Low | Medium | Off until a key exists; Haiku 5.5 at low effort; daily per-user token budget; rate limits | Set a monthly spend limit in the Anthropic Console |
+
+## 8a. AI Coach
+
+**Architecture.** One coordinator (`server/chat/orchestrator.ts`) handles each chat turn; there is no multi-agent setup. The model sits behind a small `ChatModel` interface (`server/chat/model.ts`): Claude Haiku 5.5 through the official Anthropic SDK when `ANTHROPIC_API_KEY` is set, a free rule-based practice model in development, and scripted models in tests. Separate parts: curated catalog (`catalog.ts`), deterministic recommendation (`recommend.ts`), tools (`toolDefs.ts`, `tools.ts`), data (`repo/chat.ts`), content safety and conduct (`server/safety/`), routes (`routes/chat.ts`).
+
+```
+user text ─► checkInput ─┬─ crisis / sexual / romantic / identity ─► fixed reply (model not called)
+                         └─ ok / sensitive ─► model + 3 tools (max 4 steps) ─► checkOutput ─► reply (+ support footer)
+card "Create N" ─► POST confirm ─► claim (atomic) ─► re-check items, duplicates, policy, limits ─► repo.createHabit
+```
+
+**Tools.** `get_my_habits` (read; names returned as labelled data), `search_habit_catalog` (read), `propose_habits` (saves a pending proposal; creates nothing). The model has no write tool and no user-id input, and every input is validated with zod; unknown tools and bad inputs return tool errors and are logged.
+
+**Safety and conduct** (deterministic code; the system prompt is a second layer):
+
+- Habit content (`checkHabit`) for Coach suggestions, card confirmation, manual create and rename, and import. Text is normalised (accents, zero-width characters, leetspeak, spaced or split words, stretched letters) before matching the term lists kept as data in `server/safety/terms.ts`. URLs aren't allowed in habit names.
+- Chat input (`checkInput`): first-person crisis language → fixed crisis response with resources; sexual content and romantic or companion role-play → fixed refusal (for everyone, as ages are unknown); "are you human / a doctor?" → fixed honest answer; sensitive topics (for example grief, or someone else's suicide) continue gently, with a support footer.
+- Model replies (`checkOutput`): self-harm instructions or encouragement, sexual content, attachment or engagement pressure ("I missed you", streak guilt), and claims to be human or a licensed professional (or diagnosing) are replaced with fixed replies.
+- Transparency: every new conversation starts with an AI disclosure, repeated every 3 hours; the Coach tab says it isn't medical advice and how chats are used. The Coach never starts conversations or sends reminders.
+- Privacy: chat text is used only to continue that conversation (not for ads, profiling or training) and is deleted after 30 days or with Clear chat; it is never logged. The catalog has no brands, products or links.
+- Sign-up asks users to confirm they are 13 or older; no birth date is stored.
+
+**Limits.** 20 messages per 15 minutes and 100 per day per user; 10 confirmations per hour; 20 Coach-created habits per day; 100 habits per account; 1,000 characters per message; 40 turns per conversation; 150,000 model tokens per user per day.
+
+**Logging.** `chat_message` (ids, model, tool names, token usage), `chat_tool_rejected`, `proposal_created`, `proposal_confirmed`, `proposal_confirm_denied` (reason), `content_blocked` (category, source), `safety_crisis_response`, `safety_input_blocked`, `safety_output_replaced`, `chat_budget_reached`, `chat_cleared`. Never message text.
+
+**Not legal advice.** The conduct rules follow the owner's requirements; laws differ by state and change, so a legal review is advised before a public launch.
 
 ## 9. Assumptions and dependencies
 
@@ -235,10 +274,13 @@ Today, Week, dialogs, motion and accessibility behaviour are unchanged from v1 (
 | hono, @hono/node-server | API routing; local server |
 | drizzle-orm, drizzle-kit, @neondatabase/serverless, @electric-sql/pglite | Database access, migrations, local/test Postgres |
 | @node-rs/argon2, jose, zod | Password hashing, JWTs, validation |
+| @anthropic-ai/sdk | The Coach's model (Claude Haiku 5.5), only when a key is configured |
+| nodemailer | Sending reset emails through Gmail SMTP |
 | Vitest, Testing Library, jsdom, axe-core, oxlint, tsx, concurrently | Tests, linting, dev tooling |
-| Vercel (Hobby), Neon (free), Resend (free) | Hosting, database, email — accounts created by the owner; no paid plans |
+| Vercel (Hobby), Neon (free), Gmail (App Password) or Resend (free) | Hosting, database, email — accounts created by the owner; no paid plans |
+| Anthropic API (optional, paid per use) | The Coach's replies; off until the owner adds a key with a spend limit |
 
-**Environment variables** (see `.env.example`): `DATABASE_URL`, `APP_ORIGIN`, `JWT_SECRETS`, `IP_HASH_SECRET`, `COOKIE_SECURE`, `MAIL_FROM`, and for email either `SMTP_USER` + `SMTP_PASS` (Gmail App Password; optional `SMTP_HOST`, `SMTP_PORT`) or `RESEND_API_KEY`.
+**Environment variables** (see `.env.example`): `DATABASE_URL`, `APP_ORIGIN`, `JWT_SECRETS`, `IP_HASH_SECRET`, `COOKIE_SECURE`, `MAIL_FROM`, and for email either `SMTP_USER` + `SMTP_PASS` (Gmail App Password; optional `SMTP_HOST`, `SMTP_PORT`) or `RESEND_API_KEY`; optional `ANTHROPIC_API_KEY` turns the Coach on.
 
 ## 10. Glossary of terms
 

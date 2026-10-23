@@ -7,6 +7,8 @@ import { loadConfig, MINUTE } from '../config'
 import { createPgliteDb, type Db } from '../db/client'
 import { createLogger } from '../logger'
 import { MemoryMailer } from '../mail/mailer'
+import type { ChatModel } from '../chat/model'
+import { PracticeChatModel } from '../chat/practiceModel'
 
 export const ORIGIN = 'http://127.0.0.1:5173'
 
@@ -28,7 +30,8 @@ export interface Harness {
   logs: string[]
 }
 
-export async function createHarness(): Promise<Harness> {
+/** `chatModel` defaults to the practice stand-in; pass a ScriptedChatModel to control the Coach exactly, or null. */
+export async function createHarness(opts: { chatModel?: ChatModel | null } = {}): Promise<Harness> {
   const db = await createPgliteDb()
   const clock = testClock()
   const mailer = new MemoryMailer()
@@ -39,7 +42,8 @@ export async function createHarness(): Promise<Harness> {
     IP_HASH_SECRET: 'test-ip-secret-test-ip-secret-test-0001',
     COOKIE_SECURE: 'false',
   }), forgotMinMs: 0 }
-  const app = createApp({ db, config, mailer, logger: createLogger((l) => logs.push(l)), now: clock.now })
+  const chatModel = opts.chatModel === undefined ? new PracticeChatModel() : opts.chatModel
+  const app = createApp({ db, config, mailer, logger: createLogger((l) => logs.push(l)), now: clock.now, chatModel })
   return { app, db, clock, mailer, logs }
 }
 

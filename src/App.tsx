@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, ListChecks, Plus, type LucideIcon } from 'lucide-react'
+import { CalendarDays, ListChecks, Plus, Sparkles, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import type { Burst, DateKey, Habit, Theme } from './types'
 import { formatWeekday } from './lib/dates'
@@ -15,12 +15,13 @@ import { HabitsSkeleton, LoadError, SyncErrorToast } from './components/LoadStat
 import { Header } from './components/Header'
 import { TodayView } from './components/TodayView'
 import { WeeklyGrid } from './components/WeeklyGrid'
+import { CoachView } from './components/coach/CoachView'
 import { AddHabitModal } from './components/AddHabitModal'
 import { ConfirmDialog } from './components/ui/ConfirmDialog'
 import { Celebration, CelebrationToast } from './components/Celebration'
 import { TopProgress } from './components/TopProgress'
 
-type Tab = 'today' | 'week'
+type Tab = 'today' | 'week' | 'coach'
 type Dialog = { kind: 'add' } | { kind: 'edit'; habit: Habit } | { kind: 'delete'; habit: Habit }
 
 const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' }
@@ -135,8 +136,15 @@ export default function App() {
             onEdit={openEdit}
             onDelete={openDelete}
           />
-        ) : (
+        ) : tab === 'week' ? (
           <WeeklyGrid habits={habits} completions={data.completions} today={today} onToggle={toggle} onEdit={openEdit} onDelete={openDelete} />
+        ) : (
+          <CoachView
+            onHabitsAdded={(count) => {
+              void reload()
+              setAnnouncement(`${count} habit${count === 1 ? '' : 's'} added from the Coach.`)
+            }}
+          />
         )}
       </main>
 
@@ -147,15 +155,17 @@ export default function App() {
         <div className="relative mx-auto flex h-18 max-w-xl items-center justify-around px-4">
           <TabButton active={tab === 'today'} onClick={() => switchTab('today')} icon={ListChecks} label="Today" />
           <TabButton active={tab === 'week'} onClick={() => switchTab('week')} icon={CalendarDays} label="Week" />
-          {/* Floats in the bottom-right corner above the tabs: in thumb reach, and on both views. */}
-          <button
+          <TabButton active={tab === 'coach'} onClick={() => switchTab('coach')} icon={Sparkles} label="Coach" />
+          {/* Floats in the bottom-right corner above the tabs, in thumb reach. Hidden on the Coach tab,
+              where the message box sits there (and the Coach adds habits itself). */}
+          {tab !== 'coach' && <button
             type="button"
             onClick={openAdd}
             aria-label="Add habit"
             className="absolute right-4 bottom-full mb-4 grid size-14 place-items-center rounded-2xl bg-accent-600 text-white shadow-lg shadow-accent-600/40 transition hover:bg-accent-700 active:scale-95"
           >
             <Plus className="size-7" strokeWidth={2.5} aria-hidden="true" />
-          </button>
+          </button>}
         </div>
       </nav>
 
