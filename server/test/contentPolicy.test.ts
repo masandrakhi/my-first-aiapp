@@ -58,9 +58,11 @@ describe('habit content policy on the API', () => {
   })
 
   it('logs blocked content by category and source only, never the text', async () => {
-    const blocked = events('content_blocked')
-    expect(blocked.length).toBeGreaterThan(0)
-    expect(blocked[0]).toMatchObject({ category: 'violence', source: 'habit_create' })
-    expect(h.logs.join('\n')).not.toMatch(/nudes|Su1c1de|spam\.com|Starve myself/)
+    // Makes its own blocked request, so it passes in any test order.
+    const before = events('content_blocked').length
+    await me.req('POST', '/api/habits', { name: 'Murder plan', emoji: '✨', color: '#059669' })
+    const added = events('content_blocked').slice(before)
+    expect(added).toEqual([expect.objectContaining({ category: 'violence', source: 'habit_create' })])
+    expect(h.logs.join('\n')).not.toMatch(/Murder plan|nudes|Su1c1de|spam\.com|Starve myself/)
   })
 })

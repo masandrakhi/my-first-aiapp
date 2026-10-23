@@ -1,0 +1,4 @@
+{
+  "minPassed": 256,
+  "note": "Raise on purpose when tests are added; never lower it to make verify pass."
+}

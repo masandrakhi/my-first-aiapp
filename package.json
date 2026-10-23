@@ -10,6 +10,10 @@
     "build": "tsc -b && vite build",
     "test": "vitest",
     "lint": "oxlint",
+    "verify": "node scripts/verify.mjs",
+    "smoke:live": "node scripts/smoke-live.mjs",
+    "eval:gate": "node scripts/check-gate.mjs",
+    "eval:reliability": "node scripts/reliability.mjs",
     "preview": "vite preview",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate.ts"

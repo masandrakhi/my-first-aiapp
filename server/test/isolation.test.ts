@@ -21,8 +21,11 @@ beforeAll(async () => {
 
 describe('per-user data isolation', () => {
   it('lists only the caller’s habits', async () => {
-    await bob.req('POST', '/api/habits', { ...DRAFT, name: 'Walk' })
-    const mine = await bob.req('GET', '/api/habits')
+    // Its own user, so the result doesn't depend on which other tests ran first.
+    const dana = new Client(h, '203.0.113.13')
+    await dana.register('dana@example.com')
+    await dana.req('POST', '/api/habits', { ...DRAFT, name: 'Walk' })
+    const mine = await dana.req('GET', '/api/habits')
     expect(mine.body.habits.map((x: { name: string }) => x.name)).toEqual(['Walk'])
     expect(Object.keys(mine.body.completions)).not.toContain(aliceHabit)
   })
@@ -74,7 +77,7 @@ describe('per-user data isolation', () => {
   })
 
   it('validates check-in dates', async () => {
-    const own = (await bob.req('GET', '/api/habits')).body.habits[0].id
+    const own = (await bob.req('POST', '/api/habits', { ...DRAFT, name: 'Dated' })).body.id
     expect((await bob.req('PUT', `/api/habits/${own}/completions/2026-02-30`)).status).toBe(400)
     expect((await bob.req('PUT', `/api/habits/${own}/completions/2027-01-01`)).status).toBe(400)
     expect((await bob.req('PUT', `/api/habits/${own}/completions/2026-10-21`)).status).toBe(204)
